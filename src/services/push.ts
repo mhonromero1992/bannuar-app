@@ -120,8 +120,12 @@ export async function startPush(handlers: PushHandlers): Promise<() => void> {
  * works; the token itself is deleted at Firebase too, so a stale row could never reach the phone.
  */
 export async function stopPush(): Promise<void> {
-  const token = currentToken;
+  let token = currentToken;
   currentToken = null;
+  if (!token && pushAvailable()) {
+    // signed out before push started in this launch: ask Firebase which token this phone has
+    token = await getToken(getMessaging()).catch(() => null);
+  }
   if (token) {
     await supabase.from('device_tokens').delete().eq('token', token);
   }

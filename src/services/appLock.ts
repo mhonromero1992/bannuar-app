@@ -11,6 +11,27 @@ const LOCK = `${SERVICE_PREFIX}lock`;
 /** Back from the background after this long: ask again. */
 export const RELOCK_AFTER_MS = 60_000;
 
+let holding = 0;
+let heldUntil = 0;
+
+/**
+ * Taking a photo or choosing a file leaves the app for a while; coming back from that must not lock
+ * the app and lose the form the guard was filling in.
+ */
+export async function withoutRelock<T>(fn: () => Promise<T>): Promise<T> {
+  holding++;
+  try {
+    return await fn();
+  } finally {
+    holding--;
+    heldUntil = Date.now() + 2000;
+  }
+}
+
+export function relockHeld(): boolean {
+  return holding > 0 || Date.now() < heldUntil;
+}
+
 export async function lockSupported(): Promise<boolean> {
   try {
     return await Keychain.isPasscodeAuthAvailable();

@@ -1,6 +1,6 @@
 import * as Keychain from 'react-native-keychain';
 import {NativeModules, Platform} from 'react-native';
-import {isLockOn, turnLockOff, turnLockOn, unlock} from '../src/services/appLock';
+import {isLockOn, relockHeld, turnLockOff, turnLockOn, unlock, withoutRelock} from '../src/services/appLock';
 import {setSecure} from '../src/services/secureScreen';
 import {useUi} from '../src/store/ui';
 import {clearKeychain} from './support/mockApi';
@@ -31,6 +31,16 @@ describe('app lock: off by default, the phone\'s own fingerprint, face or PIN', 
     (Keychain.isPasscodeAuthAvailable as jest.Mock).mockResolvedValueOnce(false);
     expect(await turnLockOn()).toBe(false);
     expect(await isLockOn()).toBe(false);
+  });
+  it('taking a photo or choosing a file does not relock the app (the form stays)', async () => {
+    expect(relockHeld()).toBe(false);
+    let during = false;
+    await withoutRelock(async () => {
+      during = relockHeld();
+    });
+    expect(during).toBe(true);
+    // the app comes back to the foreground just after the camera closes
+    expect(relockHeld()).toBe(true);
   });
   it('a failed or cancelled check keeps the app locked', async () => {
     await turnLockOn();

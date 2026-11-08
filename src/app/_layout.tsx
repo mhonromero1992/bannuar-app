@@ -9,7 +9,7 @@ import * as Screens from '../navigations';
 import {routeForLink} from '../navigations/linking';
 import {Tabs} from '../navigations/Tabs';
 import type {RootStackParamList} from '../navigations/types';
-import {isLockOn, RELOCK_AFTER_MS} from '../services/appLock';
+import {isLockOn, RELOCK_AFTER_MS, relockHeld} from '../services/appLock';
 import {hideBootSplash} from '../services/bootSplash';
 import {markNotificationRead, subscribeToNotifications, unreadCount} from '../services/notifications';
 import {linkFromPush, setBadge, startPush} from '../services/push';
@@ -113,7 +113,7 @@ function useRelock(phase: Phase) {
       }
       const since = away.current;
       away.current = null;
-      if (phase === 'ready' && since && Date.now() - since > RELOCK_AFTER_MS && (await isLockOn())) {
+      if (phase === 'ready' && since && Date.now() - since > RELOCK_AFTER_MS && !relockHeld() && (await isLockOn())) {
         useSession.getState().lock();
       }
       if (phase === 'ready') {

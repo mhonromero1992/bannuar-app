@@ -140,6 +140,14 @@ describe('sign-out ends the session, removes this phone and wipes what was kept'
     expect(useSession.getState().phase).toBe('signedOut');
     expect(useSession.getState().access).toBeNull();
   });
+  it('signed out before push started in this launch: the phone\'s token is still removed', async () => {
+    await useSession.getState().signIn('G-002', 'right-password-1');
+    await useSession.getState().signOut();
+    await useSession.getState().signIn('G-002', 'right-password-1');
+    api.requests.length = 0;
+    await useSession.getState().signOut();
+    expect(api.rest('DELETE', 'device_tokens')[0]?.query.get('token')).toBe('eq.fcm-test-token');
+  });
   it('a sign-out the guard chose does not say "session ended"', async () => {
     await useSession.getState().signIn('G-002', 'right-password-1');
     await useSession.getState().start();

@@ -4,6 +4,7 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 import {launchCamera, launchImageLibrary, type ImagePickerResponse} from 'react-native-image-picker';
 import {supabase} from '../config/supabase';
 import {randomId} from '../lib/ids';
+import {withoutRelock} from './appLock';
 
 /**
  * Files in and out of the private buckets.
@@ -56,16 +57,16 @@ function fromImagePicker(res: ImagePickerResponse): PickedFile | null {
 const PHOTO = {mediaType: 'photo' as const, quality: 0.7 as const, maxWidth: 1800, maxHeight: 1800, includeBase64: false};
 
 export async function takePhoto(): Promise<PickedFile | null> {
-  return fromImagePicker(await launchCamera({...PHOTO, saveToPhotos: false}));
+  return fromImagePicker(await withoutRelock(() => launchCamera({...PHOTO, saveToPhotos: false})));
 }
 
 export async function choosePhoto(): Promise<PickedFile | null> {
-  return fromImagePicker(await launchImageLibrary({...PHOTO, selectionLimit: 1}));
+  return fromImagePicker(await withoutRelock(() => launchImageLibrary({...PHOTO, selectionLimit: 1})));
 }
 
 export async function chooseDocument(): Promise<PickedFile | null> {
   try {
-    const [f] = await pick({type: [types.pdf, types.images]});
+    const [f] = await withoutRelock(() => pick({type: [types.pdf, types.images]}));
     return f ? {uri: f.uri, name: f.name ?? 'document', type: f.type ?? 'application/octet-stream', size: f.size ?? null} : null;
   } catch (e) {
     if (isErrorWithCode(e) && (e as {code?: string}).code === errorCodes.OPERATION_CANCELED) {
