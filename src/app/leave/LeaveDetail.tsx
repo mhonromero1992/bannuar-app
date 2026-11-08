@@ -6,12 +6,12 @@ import {LEAVE_STATUS, label, tone} from '../../config/labels';
 import {errorText} from '../../lib/errors';
 import {fmtDateRange, fmtDateTime, fmtNumber, fullName} from '../../lib/format';
 import type {RootStackParamList} from '../../navigations/types';
-import {isCommander} from '../../services/commander';
 import {openPrivateFile} from '../../services/files';
 import {canCancel, cancelLeave, loadLeaveRequest} from '../../services/leave';
 import {KEYS} from '../../store/keys';
 import {invalidate} from '../../store/resources';
-import {useEmployeeId, useRoles} from '../../store/session';
+import {useEmployeeId} from '../../store/session';
+import {useIsCommander} from '../../store/useIsCommander';
 import {toast} from '../../store/ui';
 import type {LeaveRequest} from '../../types/db';
 
@@ -23,7 +23,7 @@ export default function LeaveDetail() {
   const {id} = useRoute<RouteProp<RootStackParamList, 'LeaveDetail'>>().params;
   const nav = useNavigation();
   const employeeId = useEmployeeId();
-  const roles = useRoles();
+  const commander = useIsCommander();
   const [r, setR] = useState<LeaveRequest | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -68,7 +68,7 @@ export default function LeaveDetail() {
     );
   }
   const mine = r.employee_id === employeeId;
-  const toEndorse = !mine && r.status === 'pending_supervisor' && isCommander(roles);
+  const toEndorse = !mine && r.status === 'pending_supervisor' && commander;
   return (
     <Screen title="Leave request" back>
       <Badge tone={tone(LEAVE_STATUS, r.status)}>{label(LEAVE_STATUS, r.status)}</Badge>

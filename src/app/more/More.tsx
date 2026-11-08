@@ -1,18 +1,17 @@
 import {useNavigation} from '@react-navigation/native';
 import React from 'react';
 import {Card, Row, Screen} from '../../components/ui';
-import {isCommander} from '../../services/commander';
-import {useRoles} from '../../store/session';
+import {useIsCommander} from '../../store/useIsCommander';
 import {useUi} from '../../store/ui';
 
 /** Everything that is not a tab. */
 export default function More() {
   const nav = useNavigation();
-  const roles = useRoles();
+  const commander = useIsCommander();
   const unread = useUi(s => s.unread);
   return (
     <Screen title="More">
-      {isCommander(roles) ? (
+      {commander ? (
         <Card>
           <Row icon="post" title="My post" detail="Your guards and their leave to endorse" onPress={() => nav.navigate('MyPost')} last />
         </Card>

@@ -24,7 +24,7 @@ export interface HomeData {
   latestPayslip: {id: string; label: string; payDate: string; netPay: Num} | null;
   openRequests: OpenRequest[];
   documentAlerts: DocumentAlert[];
-  /** Leave waiting for this commander's endorsement; null for guards. */
+  /** Leave waiting for this commander's endorsement; null for guards who command no post. */
   toEndorse: number | null;
 }
 
@@ -32,7 +32,6 @@ type SlipRow = {id: string; net_pay: Num; period: {label: string; pay_date: stri
 
 /** Everything the Home screen shows, in parallel requests (each limited to the guard's own rows). */
 export async function loadHome(employeeId: string, roles: string[]): Promise<HomeData> {
-  const commander = isCommander(roles);
   const [me, announcements, slips, leave, coe, changes, concerns, documentAlerts, toEndorse] = await Promise.all([
     loadMe(employeeId),
     loadAnnouncements(employeeId),
@@ -63,7 +62,7 @@ export async function loadHome(employeeId: string, roles: string[]): Promise<Hom
         .order('created_at', {ascending: false}),
     ),
     loadDocumentAlerts(employeeId),
-    commander ? countToEndorse(employeeId) : Promise.resolve(null),
+    countToEndorse(employeeId, isCommander(roles)),
   ]);
 
   const latest = ((slips ?? []) as unknown as SlipRow[]).sort((a, b) => (b.period?.period_end ?? '').localeCompare(a.period?.period_end ?? ''))[0];
@@ -115,10 +114,15 @@ export async function loadHome(employeeId: string, roles: string[]): Promise<Hom
   };
 }
 
-async function countToEndorse(myEmployeeId: string): Promise<number> {
+/**
+ * A commander is whoever operations names on a post (site_supervisors): that is what the database's
+ * rules follow. The "supervisor" role counts too, though the portal has no screen that gives it to an
+ * employee login (README: To confirm with Bannuar).
+ */
+async function countToEndorse(myEmployeeId: string, hasRole: boolean): Promise<number | null> {
   const ids = await supervisedSiteIds();
   if (!ids.length) {
-    return 0;
+    return hasRole ? 0 : null;
   }
   const {count, error} = await supabase
     .from('leave_requests')

@@ -66,6 +66,10 @@ describe('a detachment commander\'s post', () => {
     api.rpc.my_supervised_site_ids = () => ['s1'];
     const home = await loadHome(DC, ['employee', 'supervisor']);
     expect(home.toEndorse).toBe(1);
+    // named commander of a post without the supervisor role (the portal has no screen to give it)
+    const namedHome = await loadHome(DC, ['employee']);
+    expect(namedHome.toEndorse).toBe(1);
+    api.rpc.my_supervised_site_ids = () => [];
     const guardHome = await loadHome(EMPLOYEE_ID, ['employee']);
     expect(guardHome.toEndorse).toBeNull();
   });
