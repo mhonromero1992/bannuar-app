@@ -1,0 +1,28 @@
+buildscript {
+    ext {
+        buildToolsVersion = "36.0.0"
+        minSdkVersion = 24
+        // Google Play takes new apps and updates only when they target Android 16 (API 36), since
+        // 31 August 2026. Targeting 36 changes Back on Android 16: see enableOnBackInvokedCallback in
+        // AndroidManifest.xml.
+        compileSdkVersion = 36
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.0.21"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // React Native 0.78 brings Android Gradle plugin 8.8, which supports API 35 at most.
+        // 8.10 is the first to support compileSdk 36, and it runs on this project's Gradle 8.12.
+        classpath("com.android.tools.build:gradle:8.10.1")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Firebase (push). Applied in app/build.gradle only when google-services.json is there.
+        classpath("com.google.gms:google-services:4.4.3")
+    }
+}
+
+apply plugin: "com.facebook.react.rootproject"

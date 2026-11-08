@@ -1,0 +1,56 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:tools="http://schemas.android.com/tools">
+
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Android 13+: asked once, after sign-in, and only when push is set up (README: Push notifications). -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <!-- react-native-blob-util asks for these; the app keeps files in its own cache only, so they go.
+       No CAMERA either: photos are taken through the camera app (react-native-image-picker's intent),
+       which needs no permission while this app does not declare it. -->
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+  <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" tools:node="remove" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
+
+  <!-- Opening a certificate PDF hands it to the phone's PDF viewer (Android 11+ needs to see one). -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <data android:mimeType="application/pdf" />
+    </intent>
+  </queries>
+
+  <!-- allowBackup off and the extraction rules: payslips and the session never leave the phone in a
+       backup or a phone-to-phone transfer.
+       enableOnBackInvokedCallback="false": React Native 0.78 handles Back in onBackPressed, which Android 16
+       stops calling for apps that target API 36. Without it, Back would leave the app instead of going to
+       the previous screen. Remove once React Native handles predictive back. -->
+  <application
+    android:name=".MainApplication"
+    android:label="@string/app_name"
+    android:icon="@mipmap/ic_launcher"
+    android:roundIcon="@mipmap/ic_launcher_round"
+    android:allowBackup="false"
+    android:fullBackupContent="false"
+    android:dataExtractionRules="@xml/data_extraction_rules"
+    android:theme="@style/AppTheme"
+    android:supportsRtl="true"
+    android:enableOnBackInvokedCallback="false"
+    tools:targetApi="33">
+    <activity
+      android:name=".MainActivity"
+      android:label="@string/app_name"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+      android:launchMode="singleTask"
+      android:windowSoftInputMode="adjustResize"
+      android:exported="true"
+      android:theme="@style/BootTheme">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+      </intent-filter>
+    </activity>
+
+  </application>
+</manifest>
