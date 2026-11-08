@@ -57,6 +57,8 @@ async function phaseFor(access: Access): Promise<Phase> {
 }
 
 let listening = false;
+/** Our own sign-out also makes supabase-js say SIGNED_OUT; that one is not a "session ended". */
+let signingOut = false;
 
 export const useSession = create<SessionState>((set, get) => ({
   phase: 'starting',
@@ -70,9 +72,11 @@ export const useSession = create<SessionState>((set, get) => ({
       // HR's temporary password ends every session: the next token refresh fails and supabase-js signs
       // out here. Wipe everything and say why.
       supabase.auth.onAuthStateChange(event => {
-        if (event === 'SIGNED_OUT' && get().phase !== 'signedOut' && get().phase !== 'starting') {
+        if (event === 'SIGNED_OUT' && !signingOut && get().phase !== 'signedOut' && get().phase !== 'starting') {
           setTimeout(() => {
-            get().signOut(SESSION_ENDED).catch(() => undefined);
+            if (!signingOut && get().phase !== 'signedOut') {
+              get().signOut(SESSION_ENDED).catch(() => undefined);
+            }
           }, 0);
         }
       });
@@ -128,14 +132,22 @@ export const useSession = create<SessionState>((set, get) => ({
   },
 
   signOut: async (notice = null) => {
-    // while the session still works: this phone's push token goes
-    await stopPush().catch(() => undefined);
-    await supabase.auth.signOut({scope: 'local'}).catch(() => undefined);
-    // everything personal kept on the phone goes too
-    await Promise.all([cacheWipe(), wipeVault(), clearDownloadedFiles(), clearShownNotifications()]);
-    resetResources();
-    useUi.getState().reset();
-    set({phase: 'signedOut', access: null, notice});
+    if (signingOut) {
+      return;
+    }
+    signingOut = true;
+    try {
+      // while the session still works: this phone's push token goes
+      await stopPush().catch(() => undefined);
+      await supabase.auth.signOut({scope: 'local'}).catch(() => undefined);
+      // everything personal kept on the phone goes too
+      await Promise.all([cacheWipe(), wipeVault(), clearDownloadedFiles(), clearShownNotifications()]);
+      resetResources();
+      useUi.getState().reset();
+      set({phase: 'signedOut', access: null, notice});
+    } finally {
+      signingOut = false;
+    }
   },
 
   lock: () => {

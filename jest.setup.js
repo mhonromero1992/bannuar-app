@@ -41,6 +41,7 @@ global.WebSocket = class FakeWebSocket {
 
 // ---------------------------------------------------------------------------- native modules
 require('react-native-gesture-handler/jestSetup');
+jest.mock('react-native-screens', () => ({...jest.requireActual('react-native-screens'), enableScreens: jest.fn()}));
 jest.mock('react-native-safe-area-context', () => require('react-native-safe-area-context/jest/mock').default);
 
 const {NativeModules} = require('react-native');
@@ -124,16 +125,26 @@ jest.mock('react-native-image-picker', () => ({
   launchCamera: jest.fn(async () => ({didCancel: true})),
 }));
 
-global.__blob = {fetched: [], opened: [], removed: []};
+// A small file system: the files the app wrote (the install marker) and what it deleted.
+global.__blob = {fetched: [], opened: [], removed: [], files: new Set()};
 jest.mock('react-native-blob-util', () => ({
   __esModule: true,
   default: {
     fs: {
       dirs: {CacheDir: '/cache', DocumentDir: '/docs'},
-      exists: jest.fn(async () => false),
-      unlink: jest.fn(async p => { global.__blob.removed.push(p); }),
+      exists: jest.fn(async p => global.__blob.files.has(p)),
+      unlink: jest.fn(async p => {
+        global.__blob.removed.push(p);
+        for (const f of [...global.__blob.files]) {
+          if (f === p || f.startsWith(`${p}/`)) {
+            global.__blob.files.delete(f);
+          }
+        }
+      }),
       mkdir: jest.fn(async () => undefined),
-      writeFile: jest.fn(async () => undefined),
+      writeFile: jest.fn(async p => {
+        global.__blob.files.add(p);
+      }),
     },
     config: jest.fn(options => ({
       fetch: jest.fn(async (method, url) => {
