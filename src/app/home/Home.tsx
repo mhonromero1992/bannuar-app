@@ -12,6 +12,7 @@ import {useResource} from '../../store/resources';
 import {useEmployeeId, useRoles, useSession} from '../../store/session';
 import {useUi} from '../../store/ui';
 import {useRefreshOnFocus} from '../../store/useRefreshOnFocus';
+import {AttendanceCard} from '../attendance/AttendanceCard';
 
 const BADGE = require('../../assets/brand/badge.png');
 
@@ -30,6 +31,7 @@ export default function Home() {
       refreshing={home.refreshing}
       onRefresh={home.refresh}
       testID="home">
+      <AttendanceCard />
       <ResourceView resource={home}>{data => <HomeBody data={data} />}</ResourceView>
     </Screen>
   );

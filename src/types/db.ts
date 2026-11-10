@@ -24,6 +24,10 @@ export interface Site {
   address?: string | null;
   city?: string | null;
   province?: string | null;
+  /** The point time in and out are checked against, and how far from it counts as at the post. */
+  latitude?: number | null;
+  longitude?: number | null;
+  geofence_radius_m?: number | null;
 }
 
 export interface Me {

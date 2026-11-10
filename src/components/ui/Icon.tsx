@@ -35,6 +35,7 @@ const PATHS: Record<string, string[]> = {
   post: ['M4 21V8l8-5 8 5v13', 'M9 21v-6h6v6', 'M9 11h.1M15 11h.1'],
   logout: ['M10 4H5v16h5', 'M14 8l4 4-4 4', 'M18 12H9'],
   plus: ['M12 5v14', 'M5 12h14'],
+  clock: ['M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z', 'M12 7.5V12l3 2'],
 };
 
 export type IconName = keyof typeof PATHS;

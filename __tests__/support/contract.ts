@@ -11,7 +11,8 @@ import type {Recorded} from './mockApi';
 
 export interface Snapshot {
   columns: Record<string, string[]>;
-  fks: Array<{name: string; from: string; to: string; columns?: string[]}>;
+  /** Each foreign key's columns: `cols` in the portal's export (tests/schema-snapshot.sql), `columns` before. */
+  fks: Array<{name: string; from: string; to: string; cols?: string[]; columns?: string[]}>;
   functions: Record<string, {args: string[]; defaults: number}>;
   pks?: Record<string, string[]>;
   buckets?: string[];
@@ -53,7 +54,7 @@ export function relationships(schema: Snapshot, a: string, b: string): string[] 
     }
     for (const fa of schema.fks.filter(f => f.from === j && f.to === a)) {
       for (const fb of schema.fks.filter(f => f.from === j && f.to === b)) {
-        if (fa !== fb && [...(fa.columns ?? []), ...(fb.columns ?? [])].every(c => pk.includes(c))) {
+        if (fa !== fb && [...(fa.cols ?? fa.columns ?? []), ...(fb.cols ?? fb.columns ?? [])].every(c => pk.includes(c))) {
           junctions.add(j);
         }
       }
@@ -187,9 +188,13 @@ export function checkRequests(requests: Recorded[], schema: Snapshot, employeeId
       }
       const own = (p: string) => p.split('/')[0] === employeeId;
       if (kind === 'upload') {
-        // "bannuar add employee files": employees write only to <their id>/uploads/
-        if (bucket !== 'employee-files' || !new RegExp(`^${employeeId}/uploads/[^/]+$`).test(objectPath)) {
-          problems.add(`${where}: employees may only upload to employee-files/<their id>/uploads/`);
+        // "bannuar add employee files": employees write only to <their id>/uploads/;
+        // "bannuar add attendance photos": a selfie goes straight into <their id>/
+        const ok =
+          (bucket === 'employee-files' && new RegExp(`^${employeeId}/uploads/[^/]+$`).test(objectPath)) ||
+          (bucket === 'attendance-photos' && new RegExp(`^${employeeId}/[^/]+$`).test(objectPath));
+        if (!ok) {
+          problems.add(`${where}: employees may only upload to employee-files/<their id>/uploads/ or attendance-photos/<their id>/`);
         }
       } else if (kind === 'sign') {
         const paths = objectPath ? [objectPath] : ((r.body as {paths?: string[]})?.paths ?? []);

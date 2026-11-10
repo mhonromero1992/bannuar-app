@@ -11,4 +11,5 @@ export const KEYS = {
   changes: 'changes',
   notifications: 'notifications',
   post: 'post',
+  attendance: 'attendance',
 } as const;

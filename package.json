@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@notifee/react-native": "^9.1.8",
+    "@react-native-community/geolocation": "3.4.0",
     "@react-native-documents/picker": "^10.1.7",
     "@react-native-firebase/app": "22.4.0",
     "@react-native-firebase/messaging": "22.4.0",

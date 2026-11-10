@@ -17,6 +17,7 @@ export default function More() {
         </Card>
       ) : null}
       <Card>
+        <Row icon="clock" title="Attendance" detail="Your time in and time out" onPress={() => nav.navigate('Attendance')} />
         <Row icon="megaphone" title="Announcements" onPress={() => nav.navigate('Announcements')} />
         <Row icon="bell" title="Notifications" detail={unread ? `${unread} unread` : null} onPress={() => nav.navigate('Notifications')} />
         <Row icon="certificate" title="Certificates of employment" onPress={() => nav.navigate('Coe')} />

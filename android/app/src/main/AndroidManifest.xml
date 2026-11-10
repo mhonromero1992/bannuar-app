@@ -4,6 +4,10 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <!-- Android 13+: asked once, after sign-in, and only when push is set up (README: Push notifications). -->
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <!-- Time in and out: the phone's location is read once, while the guard logs, to compare with the
+       post. Never in the background (no ACCESS_BACKGROUND_LOCATION). -->
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
   <!-- react-native-blob-util asks for these; the app keeps files in its own cache only, so they go.
        No CAMERA either: photos are taken through the camera app (react-native-image-picker's intent),

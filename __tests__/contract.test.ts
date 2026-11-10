@@ -2,6 +2,7 @@ import {existsSync, readFileSync} from 'fs';
 import path from 'path';
 import {supabase} from '../src/config/supabase';
 import {announcementImages, loadAnnouncements, markAnnouncementRead} from '../src/services/announcements';
+import {loadAttendance, logAttendance, uploadSelfie} from '../src/services/attendance';
 import {activate, changePassword, loadAccess, signIn} from '../src/services/auth';
 import {changedFields, loadChanges, requestChange} from '../src/services/changes';
 import {cancelCoe, loadCoe, openCertificate, requestCoe} from '../src/services/coe';
@@ -22,8 +23,9 @@ const portalSnapshot = path.join(__dirname, '../../bannuar-portal/tests/schema-s
 
 describe('every request the app makes matches the real schema', () => {
   it('the snapshot is the portal\'s current one (npm run sync:portal)', () => {
-    expect(snapshot.buckets).toEqual(['announcement-media', 'applications', 'certificates', 'employee-files']);
+    expect(snapshot.buckets).toEqual(['announcement-media', 'applications', 'attendance-photos', 'certificates', 'employee-files']);
     expect(snapshot.functions.begin_employee_activation).toBeDefined();
+    expect(snapshot.functions.log_attendance).toBeDefined();
     if (existsSync(portalSnapshot)) {
       expect(snapshot).toEqual(JSON.parse(readFileSync(portalSnapshot, 'utf8')));
     }
@@ -74,6 +76,10 @@ describe('every request the app makes matches the real schema', () => {
     await markAllNotificationsRead();
     await saveToken('fcm-test-token');
     await loadPost(EMPLOYEE_ID);
+    await loadAttendance(EMPLOYEE_ID);
+    const selfie = await uploadSelfie(EMPLOYEE_ID, {uri: 'file:///cache/selfie.jpg', name: 'selfie.jpg', type: 'image/jpeg', size: 180000});
+    await logAttendance({kind: 'time_in', photoPath: selfie, fix: {latitude: 14.5552, longitude: 121.0244, accuracy: 12.4, mocked: false}});
+    await logAttendance({kind: 'time_out', photoPath: selfie, fix: null});
     await decideLeave({requestId: 'lr1', approve: true, note: 'Covered', relieverId: 'e4'});
     await changePassword('a-new-pass-2');
     await stopPush();
@@ -112,6 +118,7 @@ describe('the contract check itself catches mistakes', () => {
         req('POST', '/rest/v1/rpc/cancel_leave_request', {request_id: 'x'}),
         req('POST', '/rest/v1/leave_requests', {employee_id: 'x', approved: true}),
         req('POST', `/storage/v1/object/employee-files/${EMPLOYEE_ID}/contracts/x.pdf`),
+        req('POST', '/storage/v1/object/attendance-photos/someone-else/selfie.jpg'),
         req('POST', '/storage/v1/object/sign/certificates/someone-else/c.pdf', {expiresIn: 60}),
         req('POST', '/functions/v1/make-me-admin', {}),
       ],
@@ -125,6 +132,7 @@ describe('the contract check itself catches mistakes', () => {
     expect(problems.join('\n')).toMatch(/cancel_leave_request needs p_request_id/);
     expect(problems.join('\n')).toMatch(/writes missing column leave_requests.approved/);
     expect(problems.join('\n')).toMatch(/only upload to employee-files\/<their id>\/uploads/);
+    expect(problems.filter(p => p.includes('attendance-photos/someone-else'))).toHaveLength(1);
     expect(problems.join('\n')).toMatch(/outside the employee's own folder/);
     expect(problems.join('\n')).toMatch(/no Edge Function make-me-admin/);
   });

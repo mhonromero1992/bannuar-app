@@ -41,6 +41,30 @@ export function fmtDateTime(v?: string | Date | null): string {
   return `${p.d} ${MONTHS[p.m]} ${p.y}, ${h12}:${String(p.min).padStart(2, '0')} ${p.h < 12 ? 'AM' : 'PM'}`;
 }
 
+/** "2:05 PM" (Manila time) */
+export function fmtTime(v?: string | Date | null): string {
+  const p = v ? parts(v) : null;
+  if (!p) {
+    return '';
+  }
+  const h12 = p.h % 12 === 0 ? 12 : p.h % 12;
+  return `${h12}:${String(p.min).padStart(2, '0')} ${p.h < 12 ? 'AM' : 'PM'}`;
+}
+
+/** The Manila calendar day of a timestamp, YYYY-MM-DD. */
+export function manilaDay(v: string | Date): string {
+  const t = typeof v === 'string' ? Date.parse(v) : v.getTime();
+  return new Date(t + MANILA_MS).toISOString().slice(0, 10);
+}
+
+/** "40 m", "1.1 km", "12 km" */
+export function fmtDistance(m: number): string {
+  if (m < 1000) {
+    return `${Math.round(m)} m`;
+  }
+  return m < 10000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m / 1000)} km`;
+}
+
 /** "Friday, 20 Nov 2026" */
 export function fmtLongDate(v?: string | Date | null): string {
   const p = v ? parts(v) : null;

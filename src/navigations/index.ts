@@ -22,6 +22,8 @@ export {default as Documents} from '../app/records/Documents';
 export {default as UploadDocument} from '../app/records/UploadDocument';
 export {default as ChangeDetails} from '../app/records/ChangeDetails';
 export {default as Notifications} from '../app/notifications/Notifications';
+export {default as Attendance} from '../app/attendance/Attendance';
+export {default as LogAttendance} from '../app/attendance/LogAttendance';
 export {default as MyPost} from '../app/commander/MyPost';
 export {default as Endorse} from '../app/commander/Endorse';
 export {default as More} from '../app/more/More';

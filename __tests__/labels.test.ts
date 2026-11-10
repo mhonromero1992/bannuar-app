@@ -12,7 +12,7 @@ function portalMaps(source: string): Record<string, unknown> {
   return out;
 }
 
-const SHARED = ['EMPLOYEE_STATUS', 'EMPLOYMENT_TYPE', 'LEAVE_STATUS', 'COE_STATUS', 'COE_PURPOSE', 'REQUEST_STATUS', 'CONCERN_STATUS', 'CONCERN_CATEGORY', 'DOC_STATUS', 'ANN_PRIORITY', 'ANN_CATEGORY'];
+const SHARED = ['EMPLOYEE_STATUS', 'EMPLOYMENT_TYPE', 'LEAVE_STATUS', 'COE_STATUS', 'COE_PURPOSE', 'REQUEST_STATUS', 'CONCERN_STATUS', 'CONCERN_CATEGORY', 'DOC_STATUS', 'ANN_PRIORITY', 'ANN_CATEGORY', 'ATTENDANCE_KIND', 'LOCATION_CHECK'];
 const sources = [
   path.join(__dirname, 'fixtures/portal-labels.ts.txt'),
   // the portal itself when it is checked out next to the app (npm run sync:portal copies it)

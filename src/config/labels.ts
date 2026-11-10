@@ -25,6 +25,16 @@ export const LEAVE_STATUS: ToneMap = {
   rejected: ['Not approved', 'bad'],
   cancelled: ['Cancelled', 'neutral'],
 };
+export const ATTENDANCE_KIND: Record<string, string> = {time_in: 'Time in', time_out: 'Time out'};
+/** log_attendance's check of the phone's location against the post. */
+export const LOCATION_CHECK: ToneMap = {
+  at_post: ['At the post', 'ok'],
+  unsure: ['GPS too rough to tell', 'warn'],
+  away: ['Away from the post', 'bad'],
+  no_location: ['No location', 'warn'],
+  post_not_set: ['Post location not set', 'neutral'],
+  no_post: ['No post assigned', 'neutral'],
+};
 export const COE_STATUS: ToneMap = {pending: ['Pending', 'warn'], issued: ['Issued', 'ok'], rejected: ['Declined', 'bad'], cancelled: ['Cancelled', 'neutral']};
 export const COE_PURPOSE: Record<string, string> = {
   employment: 'New employment', bank_loan: 'Bank or loan', government: 'Government requirement',

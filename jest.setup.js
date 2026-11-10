@@ -125,6 +125,26 @@ jest.mock('react-native-image-picker', () => ({
   launchCamera: jest.fn(async () => ({didCancel: true})),
 }));
 
+// The phone's location: tests set global.__geo (a position, an error code, or no answer at all).
+global.__geo = {fix: {coords: {latitude: 14.5552, longitude: 121.0244, accuracy: 12}, mocked: false, timestamp: 0}, error: null, silent: false, authorized: true};
+jest.mock('@react-native-community/geolocation', () => ({
+  __esModule: true,
+  default: {
+    setRNConfiguration: jest.fn(),
+    requestAuthorization: jest.fn((ok, fail) => (global.__geo.authorized ? ok() : fail({code: 1, message: 'denied'}))),
+    getCurrentPosition: jest.fn((ok, fail) => {
+      if (global.__geo.silent) {
+        return;
+      }
+      if (global.__geo.error) {
+        fail({code: global.__geo.error, message: 'no location'});
+      } else {
+        ok(global.__geo.fix);
+      }
+    }),
+  },
+}));
+
 // A small file system: the files the app wrote (the install marker) and what it deleted.
 global.__blob = {fetched: [], opened: [], removed: [], files: new Set()};
 jest.mock('react-native-blob-util', () => ({

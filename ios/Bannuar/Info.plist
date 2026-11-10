@@ -34,9 +34,11 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>Bannuar uses the camera only when you take a photo of a document to send to HR.</string>
+	<string>Bannuar uses the camera when you take a photo of yourself to time in or out, and when you take a photo of a document to send to HR.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Bannuar uses Face ID to unlock the app when you turn on the app lock.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Bannuar reads your location only when you time in or out, to check that you are at your post.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Bannuar opens your photos only when you choose a document photo to send to HR.</string>
 	<key>UIAppFonts</key>

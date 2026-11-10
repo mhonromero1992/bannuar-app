@@ -17,7 +17,9 @@ Gaia, in the same layout as the atlas app. Design: [DESIGN.md](DESIGN.md).
 | Sign in | Employee number and password | `signInWithPassword` (login email made from the number), `my_access` |
 | Set a new password | Forced after HR gives a temporary password | `auth.updateUser`, `mark_password_changed` |
 | Forgot password | Told to ask HR for a temporary password (no email reset) | HR uses `admin_reset_password` in the portal |
-| Home | Post or "Floating since …", announcements to acknowledge, latest pay (hidden until tapped), open requests, documents to renew, leave to endorse (commanders) | `employees`, `announcements`, `payslips`, `leave_requests`, `coe_requests`, `profile_change_requests`, `payroll_concerns`, `document_alerts` |
+| Time in and out | From Home: the phone's location is checked against the post, then a photo of the guard taken now, then the log. The time is the server's. Away from the post or with no location, it is still logged and marked for HR | `log_attendance`, `attendance_logs`, bucket `attendance-photos` |
+| Attendance | Their time in and out of the last 31 days, by day, with each check | `attendance_logs` |
+| Home | Today's attendance with the next button (time in or time out), post or "Floating since …", announcements to acknowledge, latest pay (hidden until tapped), open requests, documents to renew, leave to endorse (commanders) | `employees`, `announcements`, `payslips`, `leave_requests`, `coe_requests`, `profile_change_requests`, `payroll_concerns`, `document_alerts` |
 | Announcements | Read, acknowledge, pictures | `announcements`, `announcement_receipts`, `mark_announcement_read`, bucket `announcement-media` |
 | Payslips | Every published cutoff, every line, report a concern (no screenshots) | `payslips` + `payroll_periods`, `payroll_concerns` |
 | Leave | Credits left, file leave with a document, cancel | `leave_balances`, `leave_types`, `leave_requests`, `cancel_leave_request`, bucket `employee-files` |
@@ -201,8 +203,14 @@ request or socket to a real `*.supabase.co` host is refused and fails the test (
 - peso, date and mobile formats, leave days, notification deep links, the commander's endorsement,
   push registration, the app lock, screenshot blocking, the WCAG contrast of both palettes, and the
   portal's status wording
+- time in and out: the location check gives the same answer as `log_attendance` for the same points
+  (the database tests use them too), Android's permission answers, the mock location flag, the app's
+  own time limit, the selfie's folder, size and type, the log's arguments with and without a
+  location, the photo deleted after sending, what to log next (night shifts included)
 - screens driven through the real navigator: activation, payslips, filing leave, acknowledging an
-  announcement, opening a notification, endorsing leave, the offline state
+  announcement, opening a notification, endorsing leave, time in from Home (checked, photographed,
+  logged with the server's time), location refused, away with a mock location app, a failed send
+  retried with the same upload, Home after a time in, the offline state
 
 When the portal's `schema.sql` or `labels.ts` changes, copy them in and run the tests again:
 
@@ -224,6 +232,11 @@ npm run sync:portal
 - Nothing personal goes to logs; there is no analytics or crash-reporting SDK. Push text never carries
   amounts or personal numbers (the `send-push` function writes it).
 - App lock (off by default): the phone's own fingerprint, face or PIN.
+- Time in and out: the location is read once while the guard logs ("while using the app" only,
+  never in the background) and goes only with the log. The selfie is taken with the camera, never
+  picked from the gallery, sent to the private `attendance-photos` bucket and deleted from the phone
+  at once (also when the guard leaves without sending). The phone keeps no coordinates and no photo;
+  its list of logs is encrypted like the rest. Staff and the post's commanders can open the photos.
 
 ## Choices
 
@@ -236,8 +249,15 @@ npm run sync:portal
   file viewer). The copy is deleted at sign-out.
 - **Screenshots:** a 20-line module in the app (`SecureWindowModule.kt`) instead of a library.
 - **Fonts:** five static cuts of Archivo, 51 KB each (`scripts/make-fonts.py`).
+- **Location:** `@react-native-community/geolocation` 3.4.0, the community's module for what React
+  Native core used to include. It reads Google Play services' fused location (Android's own location
+  service on phones without Play services) and Core Location on iOS, and reports Android's "mock
+  location" flag. It sends nothing anywhere; the app adds its own 25-second limit because its Play
+  services path has none. The alternative was a native module of our own in Kotlin and Swift, which
+  could not be compiled here.
 - **Native modules:** screens, safe area, gesture handler, svg, bootsplash, notifee, document picker,
-  image picker, Firebase app and messaging, keychain, blob-util, and the screenshot module. No Expo.
+  image picker, geolocation, Firebase app and messaging, keychain, blob-util, and the screenshot
+  module. No Expo.
 
 ## Not verified here
 
@@ -268,6 +288,12 @@ npm run sync:portal
 | Commanders | operations names them on each post; the portal has no screen to give an employee login the `supervisor` role, so the app shows "My post" to anyone named on a post |
 | Privacy notice | the app links to the website's `/privacy`, which today covers the website; it should also cover the app |
 | Announcement pictures | the app shows pictures stored in `announcement-media/<announcement id>/`; the portal does not upload announcement pictures yet |
+| Attendance away from the post | logged and marked for HR, never refused (GPS is off indoors and can be faked). Refusing it instead is a one-line change in `log_attendance` |
+| Allowed distance | 150 m from the post's point unless operations sets another per post (20 m to 5 km) |
+| Attendance without signal | not possible: the time must be the server's. A queue that logs later with the phone's clock would need Bannuar's approval |
+| Who times in | every employee with an app login, office staff included; a floating guard's log is marked "No post assigned" |
+| Selfie keeping | kept until HR deletes them (HR admins can); Bannuar should set a retention period in its privacy notice |
+| Privacy notice | it should also say that time in and out take a photo and the phone's location |
 
 ## Layout
 

@@ -85,3 +85,7 @@ sun. Every decision has its reason in one line.
 | A label under every tab icon | Icons alone are guessed at |
 | One idea per screen, one column, details on their own screen | Small screens and large text |
 | Forms keep their main button pinned at the bottom | It stays reachable above the keyboard |
+| Attendance is the first card on Home with one button, the next log ("Time in" or "Time out"), rather than a fifth tab | It is the one thing a guard does every shift; four tabs stay |
+| Time in shows the location check before the photo is sent, in the words HR sees ("At the post", "Away from the post", "GPS too rough to tell") | The guard can move or wait for a better signal, and nothing HR sees is a surprise |
+| A log away from the post is never refused, only marked | GPS drifts indoors and between buildings; a guard at the post must still be able to log |
+| The time shown after logging is the server's | The phone's clock can be wrong or changed |

@@ -1,8 +1,11 @@
-import {NativeModules, Platform} from 'react-native';
+import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
+import ReactNativeBlobUtil from 'react-native-blob-util';
+import {launchCamera} from 'react-native-image-picker';
 import React from 'react';
 import ReactTestRenderer, {act, type ReactTestInstance} from 'react-test-renderer';
 import App from '../App';
 import {navigationRef} from '../src/app/_layout';
+import LogAttendance from '../src/app/attendance/LogAttendance';
 import Activate from '../src/app/auth/Activate';
 import PayslipDetail from '../src/app/payslips/PayslipDetail';
 import Payslips from '../src/app/payslips/Payslips';
@@ -245,4 +248,117 @@ describe('the four states', () => {
     await press(pressable(l => l === 'Try again'));
     expect(hasText('No leave filed')).toBe(true);
   }, 20000);
+});
+
+describe('time in and out, on screen', () => {
+  const {ACCESS_FINE_LOCATION: FINE, ACCESS_COARSE_LOCATION: COARSE} = PermissionsAndroid.PERMISSIONS;
+  const allow = (answer: string) =>
+    jest.spyOn(PermissionsAndroid, 'requestMultiple').mockResolvedValue({[FINE]: answer, [COARSE]: answer} as Awaited<ReturnType<typeof PermissionsAndroid.requestMultiple>>);
+  const geo = () => (global as unknown as {__geo: {fix: unknown; error: number | null}}).__geo;
+  const form = () => screen(LogAttendance as React.ComponentType<object>);
+  const selfie = 'file:///cache/rn_image_picker_lib_temp_9.jpg';
+  beforeEach(() => {
+    (api.tables.employees[0] as Record<string, unknown>).site = {id: 's1', name: 'Post A', latitude: 14.5547, longitude: 121.0244, geofence_radius_m: 150};
+    api.tables.attendance_logs = [];
+    geo().fix = {coords: {latitude: 14.5552, longitude: 121.0244, accuracy: 12}, mocked: false, timestamp: 0};
+    geo().error = null;
+    (launchCamera as jest.Mock).mockResolvedValue({assets: [{uri: selfie, fileName: 'selfie.jpg', type: 'image/jpeg', fileSize: 150000}]});
+  });
+  afterEach(() => {
+    (launchCamera as jest.Mock).mockResolvedValue({didCancel: true});
+    jest.restoreAllMocks();
+  });
+
+  it('from Home: the location checked against the post, a selfie, then the log with the server\'s time', async () => {
+    allow(PermissionsAndroid.RESULTS.GRANTED);
+    await start(true);
+    expect(hasText('Not timed in today')).toBe(true);
+    await press(byTestId('attendance-next'));
+    expect(navigationRef.getCurrentRoute()?.name).toBe('LogAttendance');
+    expect(hasText('At the post', form())).toBe(true);
+    expect(hasText('About 56 m from Post A. GPS accurate to 12 m.', form())).toBe(true);
+    expect(byTestId('attendance-send', form()).props.disabled).toBe(true);
+
+    await press(byTestId('attendance-photo', form()));
+    expect((launchCamera as jest.Mock).mock.calls.at(-1)[0]).toMatchObject({cameraType: 'front', saveToPhotos: false});
+    expect(byTestId('attendance-send', form()).props.disabled).toBe(false);
+    await press(byTestId('attendance-send', form()));
+
+    const upload = api.requests.find(r => r.path.startsWith('/storage/v1/object/attendance-photos/'));
+    expect(decodeURIComponent(upload!.path)).toMatch(new RegExp(`/attendance-photos/${EMPLOYEE_ID}/[0-9a-f-]{36}\\.jpg$`));
+    expect(api.rpcCalls('log_attendance')[0].body).toEqual({
+      p_kind: 'time_in',
+      p_photo_path: decodeURIComponent(upload!.path).slice('/storage/v1/object/attendance-photos/'.length),
+      p_latitude: 14.5552,
+      p_longitude: 121.0244,
+      p_accuracy_m: 12,
+      p_mock_location: false,
+    });
+    expect(hasText('Time in logged')).toBe(true);
+    expect(hasText('8:02 AM')).toBe(true);
+    expect(ReactNativeBlobUtil.fs.unlink).toHaveBeenCalledWith('/cache/rn_image_picker_lib_temp_9.jpg');
+    await press(byTestId('attendance-done'));
+    expect(navigationRef.getCurrentRoute()?.name).toBe('Home');
+  });
+
+  it('location refused for good: says how to allow it, and still logs, without a location', async () => {
+    allow(PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN);
+    await start(true);
+    await go('LogAttendance', {kind: 'time_out'});
+    expect(hasText('Location is turned off for Bannuar', form())).toBe(true);
+    expect(hasText('HR will see that the log has no location', form())).toBe(true);
+    expect(pressable(l => l === 'Open Settings', form())).toBeDefined();
+    await press(byTestId('attendance-photo', form()));
+    await press(byTestId('attendance-send', form()));
+    expect(api.rpcCalls('log_attendance')[0].body).toMatchObject({p_kind: 'time_out', p_latitude: null, p_longitude: null, p_accuracy_m: null, p_mock_location: null});
+    expect(hasText('Time out logged')).toBe(true);
+    expect(hasText('HR will look at this log')).toBe(true);
+  });
+
+  it('away from the post with a mock location app: shown before sending, as HR will see it', async () => {
+    allow(PermissionsAndroid.RESULTS.GRANTED);
+    geo().fix = {coords: {latitude: 14.5647, longitude: 121.0244, accuracy: 20}, mocked: true, timestamp: 0};
+    api.rpc.log_attendance = () => ({id: 'at-2', kind: 'time_in', logged_at: '2026-11-11T00:02:00Z', location_check: 'away', distance_m: 1112, accuracy_m: 20, radius_m: 150, site_name: 'Post A'});
+    await start(true);
+    await go('LogAttendance', {kind: 'time_in'});
+    expect(hasText('Away from the post', form())).toBe(true);
+    expect(hasText('About 1.1 km from Post A', form())).toBe(true);
+    expect(hasText('A mock location app is on', form())).toBe(true);
+    await press(byTestId('attendance-photo', form()));
+    await press(byTestId('attendance-send', form()));
+    expect(api.rpcCalls('log_attendance')[0].body).toMatchObject({p_mock_location: true});
+    expect(hasText('HR will look at this log')).toBe(true);
+  });
+
+  it('a failed send keeps the photo; the retry reuses the same upload, so nothing is logged twice', async () => {
+    allow(PermissionsAndroid.RESULTS.GRANTED);
+    const ok = api.rpc.log_attendance;
+    api.rpc.log_attendance = () => ({status: 503, body: {message: 'Service unavailable'}});
+    await start(true);
+    await go('LogAttendance', {kind: 'time_in'});
+    await press(byTestId('attendance-photo', form()));
+    await press(byTestId('attendance-send', form()));
+    expect(hasText('Not logged yet', form())).toBe(true);
+    api.rpc.log_attendance = ok;
+    await press(byTestId('attendance-send', form()));
+    const uploads = api.requests.filter(r => r.path.startsWith('/storage/v1/object/attendance-photos/'));
+    expect(uploads).toHaveLength(1);
+    const calls = api.rpcCalls('log_attendance');
+    expect(calls).toHaveLength(2);
+    expect((calls[1].body as {p_photo_path: string}).p_photo_path).toBe((calls[0].body as {p_photo_path: string}).p_photo_path);
+    expect(hasText('Time in logged')).toBe(true);
+  });
+
+  it('after a time in, Home offers time out; the list shows the day with each check', async () => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 3600000).toISOString();
+    api.tables.attendance_logs = [
+      {id: 'at1', employee_id: EMPLOYEE_ID, kind: 'time_in', logged_at: twoHoursAgo, location_check: 'at_post', distance_m: 40, accuracy_m: 10, radius_m: 150, mock_location: false, site: {name: 'Post A'}},
+    ];
+    await start(true);
+    expect(hasText('Timed in')).toBe(true);
+    expect(byTestId('attendance-next').props.title).toBe('Time out');
+    await go('Attendance');
+    expect(hasText('About 40 m from Post A')).toBe(true);
+    expect(hasText('At the post')).toBe(true);
+  });
 });
