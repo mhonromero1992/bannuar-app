@@ -1,7 +1,7 @@
 import {supabase} from '../config/supabase';
 import type {DocumentType, EmployeeDocument, GovernmentIds} from '../types/db';
 import {exec, run} from './db';
-import {type PickedFile, uploadEmployeeFile} from './files';
+import {type PickedFile, uploadMyFile} from './files';
 
 export const DOCUMENT_TYPE_COLUMNS = 'id,code,name,category,has_expiry,employee_can_upload,sort_order';
 export const DOCUMENT_COLUMNS =
@@ -44,7 +44,8 @@ export async function loadGovernmentIds(employeeId: string): Promise<GovernmentI
 }
 
 /**
- * A renewal from the phone: the file goes to employee-files/<id>/uploads/, then the row. The
+ * A renewal from the phone: the file goes to the employee's S3 folder for its document type
+ * (201-file, work-requirements or lesp) through the files function, then the row. The
  * employee_documents_before_write trigger makes it "pending_review" for HR whatever the app sends.
  */
 export async function uploadRenewal(input: {
@@ -55,7 +56,7 @@ export async function uploadRenewal(input: {
   expiresOn: string | null;
   file: PickedFile;
 }): Promise<void> {
-  const path = await uploadEmployeeFile(input.employeeId, input.file);
+  const path = (await uploadMyFile('document', input.file, {documentTypeId: input.documentTypeId})).key;
   await exec(
     supabase.from('employee_documents').insert({
       employee_id: input.employeeId,

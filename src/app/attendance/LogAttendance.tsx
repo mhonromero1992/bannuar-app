@@ -97,7 +97,7 @@ export default function LogAttendance() {
     let path = uploadedPath;
     try {
       if (!path) {
-        path = await uploadSelfie(employeeId, photo);
+        path = await uploadSelfie(kind, photo);
         setUploadedPath(path);
       }
       const result = await logAttendance({kind, photoPath: path, fix: loc.state === 'found' ? loc.fix : null});

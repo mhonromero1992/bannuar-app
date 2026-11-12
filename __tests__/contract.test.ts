@@ -7,11 +7,11 @@ import {activate, changePassword, loadAccess, signIn} from '../src/services/auth
 import {changedFields, loadChanges, requestChange} from '../src/services/changes';
 import {cancelCoe, loadCoe, openCertificate, requestCoe} from '../src/services/coe';
 import {decideLeave, loadPost} from '../src/services/commander';
-import {openPrivateFile, uploadEmployeeFile} from '../src/services/files';
+import {openPrivateFile, uploadMyFile} from '../src/services/files';
 import {loadHome} from '../src/services/home';
 import {cancelLeave, fileLeave, loadLeave, loadLeaveRequest} from '../src/services/leave';
 import {loadNotifications, markAllNotificationsRead, markNotificationRead, subscribeToNotifications, unreadCount} from '../src/services/notifications';
-import {loadConcerns, loadPayslip, loadPayslips, reportConcern} from '../src/services/payslips';
+import {loadConcerns, loadPayslip, loadPayslips, openPayslipPdf, reportConcern} from '../src/services/payslips';
 import {loadMe} from '../src/services/profile';
 import {saveToken, stopPush} from '../src/services/push';
 import {loadDocumentAlerts, loadDocuments, loadGovernmentIds, uploadRenewal} from '../src/services/records';
@@ -56,7 +56,7 @@ describe('every request the app makes matches the real schema', () => {
     await reportConcern({employeeId: EMPLOYEE_ID, payslipId: 'ps1', category: 'overtime', description: 'Missing OT'});
     await loadLeave(EMPLOYEE_ID);
     await loadLeaveRequest('lr1');
-    const attachment = await uploadEmployeeFile(EMPLOYEE_ID, file);
+    const attachment = (await uploadMyFile('leave', file)).key;
     await fileLeave({employeeId: EMPLOYEE_ID, leaveTypeId: 'lt1', startDate: '2026-11-20', endDate: '2026-11-21', reason: 'Family', attachmentPath: attachment});
     await cancelLeave('lr1');
     await loadCoe(EMPLOYEE_ID);
@@ -68,6 +68,8 @@ describe('every request the app makes matches the real schema', () => {
     await loadGovernmentIds(EMPLOYEE_ID);
     await uploadRenewal({employeeId: EMPLOYEE_ID, documentTypeId: 'dt1', documentNo: 'LIC-2', issuedOn: null, expiresOn: '2028-11-01', file});
     await openPrivateFile('employee-files', attachment, 'x.jpg');
+    await openPrivateFile('employee-files', `${EMPLOYEE_ID}/uploads/from-before-s3.jpg`, 'old.jpg');
+    await openPayslipPdf({id: 'ps1', period: null});
     await loadChanges(EMPLOYEE_ID);
     await requestChange({employeeId: EMPLOYEE_ID, changes: changedFields({mobile_no: '0917'}, {mobile_no: '09179998888', emergency_contact_name: 'Ana Lim'}), reason: null});
     await loadNotifications();
@@ -77,7 +79,7 @@ describe('every request the app makes matches the real schema', () => {
     await saveToken('fcm-test-token');
     await loadPost(EMPLOYEE_ID);
     await loadAttendance(EMPLOYEE_ID);
-    const selfie = await uploadSelfie(EMPLOYEE_ID, {uri: 'file:///cache/selfie.jpg', name: 'selfie.jpg', type: 'image/jpeg', size: 180000});
+    const selfie = await uploadSelfie('time_in', {uri: 'file:///cache/selfie.jpg', name: 'selfie.jpg', type: 'image/jpeg', size: 180000});
     await logAttendance({kind: 'time_in', photoPath: selfie, fix: {latitude: 14.5552, longitude: 121.0244, accuracy: 12.4, mocked: false}});
     await logAttendance({kind: 'time_out', photoPath: selfie, fix: null});
     await decideLeave({requestId: 'lr1', approve: true, note: 'Covered', relieverId: 'e4'});
@@ -104,6 +106,15 @@ describe('every request the app makes matches the real schema', () => {
   });
 });
 
+/** What a wrong upload would look like: a certificate, for someone else. */
+function certificateForm(): FormData {
+  const f = new FormData();
+  f.append('purpose', 'certificate');
+  f.append('employee_id', 'e-other');
+  f.append('file', new Blob(['%PDF-']));
+  return f;
+}
+
 describe('the contract check itself catches mistakes', () => {
   const req = (method: string, url: string, body: unknown = null): Recorded => {
     const u = new URL(`https://mock.supabase.test${url}`);
@@ -121,6 +132,8 @@ describe('the contract check itself catches mistakes', () => {
         req('POST', '/storage/v1/object/attendance-photos/someone-else/selfie.jpg'),
         req('POST', '/storage/v1/object/sign/certificates/someone-else/c.pdf', {expiresIn: 60}),
         req('POST', '/functions/v1/make-me-admin', {}),
+        req('POST', '/functions/v1/files', certificateForm()),
+        req('POST', '/functions/v1/files', {action: 'sign', keys: ['e-other/uploads/x.jpg']}),
       ],
       snapshot,
       EMPLOYEE_ID,
@@ -135,6 +148,9 @@ describe('the contract check itself catches mistakes', () => {
     expect(problems.filter(p => p.includes('attendance-photos/someone-else'))).toHaveLength(1);
     expect(problems.join('\n')).toMatch(/outside the employee's own folder/);
     expect(problems.join('\n')).toMatch(/no Edge Function make-me-admin/);
+    expect(problems.join('\n')).toMatch(/the app uploads only documents, leave attachments and selfies, not "certificate"/);
+    expect(problems.join('\n')).toMatch(/an upload goes only to the employee's own folder/);
+    expect(problems.join('\n')).toMatch(/asked only to sign S3 keys/);
   });
   it('finds the relationships PostgREST sees', () => {
     expect(relationships(snapshot, 'employees', 'sites')).toEqual(['employees_site_id_fkey', 'site_supervisors']);

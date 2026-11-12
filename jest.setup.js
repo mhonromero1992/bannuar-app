@@ -1,10 +1,13 @@
 /* eslint-env jest */
 /**
- * Tests never touch Bannuar's live project. The app is built against https://mock.supabase.test
- * (__mocks__/env.js); __tests__/support/mockApi.ts answers like Supabase. On top of that, every
- * request or socket to a real *.supabase.co host is refused here and fails the test (jest.after.js).
+ * Tests never touch Bannuar's live project or its files in Amazon S3. The app is built against
+ * https://mock.supabase.test (__mocks__/env.js); __tests__/support/mockApi.ts answers like Supabase and
+ * its Edge Functions. On top of that, every request or socket to a real *.supabase.co or
+ * *.amazonaws.com host (through fetch, a WebSocket or react-native-blob-util) is refused here and fails
+ * the test (jest.after.js).
  */
-const LIVE = /^(https?|wss?):\/\/[^/]*\.supabase\.co(?::\d+)?(\/|$)/i;
+const LIVE = /^(https?|wss?):\/\/([^/]*\.)?(supabase\.co|amazonaws\.com)(?::\d+)?(\/|$)/i;
+global.__LIVE = LIVE;
 global.__liveHits = [];
 global.__fetchImpl = null;
 
@@ -167,8 +170,12 @@ jest.mock('react-native-blob-util', () => ({
       }),
     },
     config: jest.fn(options => ({
-      fetch: jest.fn(async (method, url) => {
-        global.__blob.fetched.push({method, url, path: options.path});
+      fetch: jest.fn(async (method, url, headers, body) => {
+        if (global.__LIVE.test(String(url))) {
+          global.__liveHits.push(String(url));
+          throw new Error(`A test tried to download from a live host: ${url}`);
+        }
+        global.__blob.fetched.push({method, url, path: options.path, headers, body});
         return {info: () => ({status: 200}), path: () => options.path};
       }),
     })),

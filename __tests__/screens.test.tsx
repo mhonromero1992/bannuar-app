@@ -14,7 +14,7 @@ import {ACTIVATION_MESSAGES} from '../src/services/auth';
 import {resetResources} from '../src/store/resources';
 import {useSession} from '../src/store/session';
 import {useUi} from '../src/store/ui';
-import {access, clearKeychain, EMPLOYEE_ID, installMockApi, type MockApi} from './support/mockApi';
+import {access, clearKeychain, EMPLOYEE_ID, formFields, installMockApi, type MockApi} from './support/mockApi';
 
 let api: MockApi;
 let tree: ReactTestRenderer.ReactTestRenderer | null = null;
@@ -284,11 +284,11 @@ describe('time in and out, on screen', () => {
     expect(byTestId('attendance-send', form()).props.disabled).toBe(false);
     await press(byTestId('attendance-send', form()));
 
-    const upload = api.requests.find(r => r.path.startsWith('/storage/v1/object/attendance-photos/'));
-    expect(decodeURIComponent(upload!.path)).toMatch(new RegExp(`/attendance-photos/${EMPLOYEE_ID}/[0-9a-f-]{36}\\.jpg$`));
+    const upload = api.requests.find(r => r.path === '/functions/v1/files');
+    expect(formFields(upload?.body)).toEqual({purpose: 'attendance', kind: 'time_in', file: '[file]'});
     expect(api.rpcCalls('log_attendance')[0].body).toEqual({
       p_kind: 'time_in',
-      p_photo_path: decodeURIComponent(upload!.path).slice('/storage/v1/object/attendance-photos/'.length),
+      p_photo_path: expect.stringMatching(/^employees\/G-002\/attendance\/2026\/11\/2026-11-11_0802_time-in_mock\d+\.jpg$/),
       p_latitude: 14.5552,
       p_longitude: 121.0244,
       p_accuracy_m: 12,
@@ -341,7 +341,7 @@ describe('time in and out, on screen', () => {
     expect(hasText('Not logged yet', form())).toBe(true);
     api.rpc.log_attendance = ok;
     await press(byTestId('attendance-send', form()));
-    const uploads = api.requests.filter(r => r.path.startsWith('/storage/v1/object/attendance-photos/'));
+    const uploads = api.requests.filter(r => r.path === '/functions/v1/files');
     expect(uploads).toHaveLength(1);
     const calls = api.rpcCalls('log_attendance');
     expect(calls).toHaveLength(2);

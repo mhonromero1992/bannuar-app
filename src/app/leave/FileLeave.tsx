@@ -3,7 +3,7 @@ import React, {useMemo, useState} from 'react';
 import {Button, Card, DateField, Field, Loading, Notice, Screen, SelectField, Txt} from '../../components/ui';
 import {errorText} from '../../lib/errors';
 import {fmtNumber} from '../../lib/format';
-import {uploadEmployeeFile, type PickedFile} from '../../services/files';
+import {uploadMyFile, type PickedFile} from '../../services/files';
 import {daysLeft, fileLeave, leaveDays, leaveFormProblem, leaveTypeNote, loadLeave, typesFor} from '../../services/leave';
 import {loadMe} from '../../services/profile';
 import {KEYS} from '../../store/keys';
@@ -44,7 +44,7 @@ export default function FileLeave() {
     }
     setBusy(true);
     try {
-      const attachmentPath = file ? await uploadEmployeeFile(employeeId, file) : null;
+      const attachmentPath = file ? (await uploadMyFile('leave', file)).key : null;
       await fileLeave({employeeId, leaveTypeId: type!.id, startDate: start!, endDate: end!, reason, attachmentPath});
       invalidate(KEYS.leave, KEYS.home);
       toast('Leave filed. It goes to your commander, then HR.');

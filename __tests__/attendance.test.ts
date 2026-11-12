@@ -5,7 +5,8 @@ import {checkLine, dayTitle, flagged, whenText} from '../src/app/attendance/word
 import {fmtDistance, fmtTime, manilaDay} from '../src/lib/format';
 import {discardPhoto, loadAttendance, logAttendance, nextKind, photoMustBeRetaken, takeSelfie, uploadSelfie, type AttendanceLog} from '../src/services/attendance';
 import {askLocation, checkLocation, distanceM, getFix, LocationError, permissionFrom, toFix} from '../src/services/location';
-import {EMPLOYEE_ID, installMockApi, type MockApi} from './support/mockApi';
+import {EMPLOYEE_ID, formFields, installMockApi, type MockApi} from './support/mockApi';
+import {signIn} from '../src/services/auth';
 
 type Geo = {fix: unknown; error: number | null; silent: boolean; authorized: boolean};
 const geo = () => (global as unknown as {__geo: Geo}).__geo;
@@ -98,17 +99,19 @@ describe('the selfie and the log', () => {
     expect(p).toEqual({uri: 'file:///cache/rn_image_picker_lib_temp_1.jpg', name: 'x.jpg', type: 'image/jpeg', size: 190000});
     expect((launchCamera as jest.Mock).mock.calls.at(-1)[0]).toMatchObject({cameraType: 'front', mediaType: 'photo', saveToPhotos: false, maxWidth: 1080});
   });
-  it('goes to attendance-photos/<employee id>/, never over an existing file', async () => {
-    const path = await uploadSelfie(EMPLOYEE_ID, {uri: 'file:///cache/a.jpg', name: 'a.jpg', type: 'image/jpeg', size: 200000});
-    expect(path).toMatch(new RegExp(`^${EMPLOYEE_ID}/[0-9a-f-]{36}\\.jpg$`));
-    const up = api.requests.find(r => r.path.startsWith('/storage/v1/object/attendance-photos/'));
+  it('goes to the guard\'s own S3 attendance folder through the files function, with the kind', async () => {
+    await signIn('G-002', api.password); // the files functions take the guard's own token
+    const key = await uploadSelfie('time_in', {uri: 'file:///cache/a.jpg', name: 'a.jpg', type: 'image/jpeg', size: 200000});
+    expect(key).toMatch(/^employees\/G-002\/attendance\/2026\/11\/2026-11-11_0802_time-in_mock\d+\.jpg$/);
+    const up = api.requests.find(r => r.path === '/functions/v1/files');
     expect(up?.method).toBe('POST');
-    expect(decodeURIComponent(up!.path)).toBe(`/storage/v1/object/attendance-photos/${path}`);
-    expect(up?.headers['x-upsert']).toBe('false');
+    expect(formFields(up?.body)).toEqual({purpose: 'attendance', kind: 'time_in', file: '[file]'});
+    expect(api.requests.some(r => r.path.startsWith('/storage/v1/'))).toBe(false);
   });
-  it('refuses what the bucket would refuse', async () => {
-    await expect(uploadSelfie(EMPLOYEE_ID, {uri: 'file:///a.gif', name: 'a.gif', type: 'image/gif', size: 10})).rejects.toThrow(/JPG/);
-    await expect(uploadSelfie(EMPLOYEE_ID, {uri: 'file:///a.jpg', name: 'a.jpg', type: 'image/jpeg', size: 4 * 1024 * 1024})).rejects.toThrow(/too big/);
+  it('refuses what the files function would refuse', async () => {
+    await expect(uploadSelfie('time_in', {uri: 'file:///a.gif', name: 'a.gif', type: 'image/gif', size: 10})).rejects.toThrow(/JPG/);
+    await expect(uploadSelfie('time_in', {uri: 'file:///a.jpg', name: 'a.jpg', type: 'image/jpeg', size: 4 * 1024 * 1024})).rejects.toThrow(/too big/);
+    expect(api.requests.length).toBe(0);
   });
   it('the log carries the photo and the position; the server sets the time', async () => {
     const r = await logAttendance({kind: 'time_in', photoPath: `${EMPLOYEE_ID}/x.jpg`, fix: {latitude: 14.5552, longitude: 121.0244, accuracy: 12.44, mocked: false}});

@@ -1,6 +1,7 @@
-import {supabase} from '../config/supabase';
+import {SUPABASE_URL, supabase} from '../config/supabase';
 import type {PayrollConcern, Payslip} from '../types/db';
 import {exec, run} from './db';
+import {downloadAndOpen, functionHeaders} from './files';
 
 /**
  * A guard sees a payslip only once payroll publishes its cutoff (the "read payslips" policy), and only
@@ -60,6 +61,23 @@ export function payslipLines(p: Payslip): {earnings: PayRow[]; deductions: PayRo
     {label: 'Other deductions', amount: Math.round(restD * 100) / 100},
   ];
   return {earnings: earnings.filter(l => l.amount !== 0), deductions: deductions.filter(l => l.amount !== 0)};
+}
+
+/**
+ * The payslip as a PDF, made on the spot by the payslip-pdf Edge Function (with the guard's own token,
+ * so only their own published payslip) and opened in the phone's viewer to save, share or print.
+ * Nothing is stored anywhere; the copy in the app's cache is deleted at sign-out.
+ */
+export async function openPayslipPdf(p: Pick<Payslip, 'id' | 'period'>): Promise<void> {
+  await downloadAndOpen(
+    {
+      method: 'POST',
+      url: `${SUPABASE_URL}/functions/v1/payslip-pdf`,
+      headers: {...(await functionHeaders()), 'Content-Type': 'application/json'},
+      body: JSON.stringify({payslip_id: p.id}),
+    },
+    `payslip-${p.period?.period_start ?? ''}-to-${p.period?.period_end ?? p.id}.pdf`,
+  );
 }
 
 // ------------------------------------------------------------------------------- concerns

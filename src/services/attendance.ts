@@ -1,10 +1,9 @@
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {launchCamera} from 'react-native-image-picker';
 import {supabase} from '../config/supabase';
-import {randomId} from '../lib/ids';
 import {withoutRelock} from './appLock';
 import {run} from './db';
-import type {PickedFile} from './files';
+import {type PickedFile, uploadMyFile} from './files';
 import type {Fix, LocationCheck} from './location';
 
 /**
@@ -60,7 +59,7 @@ export function nextKind(logs: AttendanceLog[] | undefined, now: number = Date.n
   return last && last.kind === 'time_in' && now - Date.parse(last.logged_at) < SHIFT_HOURS * 3600000 ? 'time_out' : 'time_in';
 }
 
-/** The bucket's limit (schema.sql, section 13). */
+/** What the files function takes for a selfie (schema.sql, upload_rule). */
 export const MAX_SELFIE_BYTES = 3 * 1024 * 1024;
 const SELFIE_TYPES: Record<string, string> = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic'};
 
@@ -82,24 +81,19 @@ export async function takeSelfie(): Promise<PickedFile | null> {
   return {uri: a.uri, name: a.fileName ?? 'selfie.jpg', type: a.type ?? 'image/jpeg', size: a.fileSize ?? null};
 }
 
-/** Uploads to attendance-photos/<employee id>/<random>.jpg (the only folder the guard may write to). */
-export async function uploadSelfie(employeeId: string, photo: PickedFile): Promise<string> {
-  const ext = SELFIE_TYPES[photo.type];
-  if (!ext) {
+/**
+ * Sends the selfie to the guard's own S3 folder through the files Edge Function:
+ * employees/<employee number>/attendance/<year>/<month>/<date>_<time>_<time-in|time-out>_<random>.jpg.
+ * Returns the key for log_attendance, which accepts only the guard's own upload of the last 30 minutes.
+ */
+export async function uploadSelfie(kind: AttendanceKind, photo: PickedFile): Promise<string> {
+  if (!SELFIE_TYPES[photo.type]) {
     throw new Error('Take the photo with the camera, as a JPG.');
   }
   if (photo.size !== null && photo.size > MAX_SELFIE_BYTES) {
     throw new Error('The photo is too big to send. Take it again.');
   }
-  const path = `${employeeId}/${randomId()}.${ext}`;
-  const form = new FormData();
-  // React Native reads the file itself from its uri while sending
-  form.append('', {uri: photo.uri, name: photo.name, type: photo.type} as unknown as Blob);
-  const {error} = await supabase.storage.from('attendance-photos').upload(path, form, {contentType: photo.type, upsert: false});
-  if (error) {
-    throw error;
-  }
-  return path;
+  return (await uploadMyFile('attendance', photo, {kind})).key;
 }
 
 /** Writes the log. A retry with the same photo path returns the first log (log_attendance). */

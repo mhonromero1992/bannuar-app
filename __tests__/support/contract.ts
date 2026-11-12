@@ -7,6 +7,7 @@
  *  - storage: the bucket exists, and paths are the ones the storage policies allow an employee
  *  - Edge Functions: only the ones in bannuar-portal/supabase/functions
  */
+import {formFields} from './mockApi';
 import type {Recorded} from './mockApi';
 
 export interface Snapshot {
@@ -18,7 +19,7 @@ export interface Snapshot {
   buckets?: string[];
 }
 
-export const EDGE_FUNCTIONS = ['activate-employee', 'send-push'];
+export const EDGE_FUNCTIONS = ['activate-employee', 'send-push', 'files', 'payslip-pdf'];
 
 function splitTop(s: string): string[] {
   const out: string[] = [];
@@ -213,6 +214,33 @@ export function checkRequests(requests: Recorded[], schema: Snapshot, employeeId
       const name = r.path.slice('/functions/v1/'.length);
       if (!EDGE_FUNCTIONS.includes(name)) {
         problems.add(`${where}: no Edge Function ${name}`);
+      }
+      if (name === 'files') {
+        // the app stores only the guard's own documents, leave attachments and selfies, and asks for
+        // links to S3 keys only; certificates are HR's (the database refuses the rest anyway)
+        const fields = formFields(r.body);
+        if (fields) {
+          if (!['document', 'leave', 'attendance'].includes(fields.purpose)) {
+            problems.add(`${where}: the app uploads only documents, leave attachments and selfies, not "${fields.purpose}"`);
+          }
+          if (fields.employee_id && fields.employee_id !== employeeId) {
+            problems.add(`${where}: an upload goes only to the employee's own folder`);
+          }
+          if (fields.purpose === 'attendance' && !['time_in', 'time_out'].includes(fields.kind)) {
+            problems.add(`${where}: a selfie says time_in or time_out`);
+          }
+          if (fields.purpose === 'document' && !fields.document_type_id) {
+            problems.add(`${where}: a document upload names its document type`);
+          }
+          if (fields.file !== '[file]') {
+            problems.add(`${where}: the upload has no file part named "file"`);
+          }
+        } else {
+          const b = r.body as {action?: string; keys?: unknown} | null;
+          if (b?.action !== 'sign' || !Array.isArray(b.keys) || !b.keys.every(k => typeof k === 'string' && k.startsWith('employees/'))) {
+            problems.add(`${where}: the files function is asked only to sign S3 keys (employees/...)`);
+          }
+        }
       }
       continue;
     }

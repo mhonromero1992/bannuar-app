@@ -17,14 +17,14 @@ Gaia, in the same layout as the atlas app. Design: [DESIGN.md](DESIGN.md).
 | Sign in | Employee number and password | `signInWithPassword` (login email made from the number), `my_access` |
 | Set a new password | Forced after HR gives a temporary password | `auth.updateUser`, `mark_password_changed` |
 | Forgot password | Told to ask HR for a temporary password (no email reset) | HR uses `admin_reset_password` in the portal |
-| Time in and out | From Home: the phone's location is checked against the post, then a photo of the guard taken now, then the log. The time is the server's. Away from the post or with no location, it is still logged and marked for HR | `log_attendance`, `attendance_logs`, bucket `attendance-photos` |
+| Time in and out | From Home: the phone's location is checked against the post, then a photo of the guard taken now, then the log. The time is the server's. Away from the post or with no location, it is still logged and marked for HR | `log_attendance`, `attendance_logs`; the selfie to S3 (`employees/<number>/attendance/<year>/<month>/`) through the `files` function |
 | Attendance | Their time in and out of the last 31 days, by day, with each check | `attendance_logs` |
 | Home | Today's attendance with the next button (time in or time out), post or "Floating since …", announcements to acknowledge, latest pay (hidden until tapped), open requests, documents to renew, leave to endorse (commanders) | `employees`, `announcements`, `payslips`, `leave_requests`, `coe_requests`, `profile_change_requests`, `payroll_concerns`, `document_alerts` |
 | Announcements | Read, acknowledge, pictures | `announcements`, `announcement_receipts`, `mark_announcement_read`, bucket `announcement-media` |
-| Payslips | Every published cutoff, every line, report a concern (no screenshots) | `payslips` + `payroll_periods`, `payroll_concerns` |
-| Leave | Credits left, file leave with a document, cancel | `leave_balances`, `leave_types`, `leave_requests`, `cancel_leave_request`, bucket `employee-files` |
-| Certificates of employment | Request (due in three days), cancel, open the PDF, the verification code | `coe_requests`, `certificates`, `cancel_coe_request`, bucket `certificates` |
-| My records | The 201 file (read-only), government numbers (masked, no screenshots), documents with expiry, upload a renewal | `employees`, `get_government_ids`, `employee_documents`, `document_types` |
+| Payslips | Every published cutoff, every line, report a concern (no screenshots), download the payslip as a PDF (made on request by the `payslip-pdf` function, never stored) | `payslips` + `payroll_periods`, `payroll_concerns`, Edge Function `payslip-pdf` |
+| Leave | Credits left, file leave with a document, cancel | `leave_balances`, `leave_types`, `leave_requests`, `cancel_leave_request`; the document to S3 (`employees/<number>/leave/`) |
+| Certificates of employment | Request (due in three days), cancel, open the PDF, the verification code | `coe_requests`, `certificates`, `cancel_coe_request`; the PDF from S3 (`employees/<number>/certificates/`) |
+| My records | The 201 file (read-only), government numbers (masked, no screenshots), documents with expiry, upload a renewal (to the document type's S3 folder: `201-file`, `work-requirements` or `lesp`) | `employees`, `get_government_ids`, `employee_documents`, `document_types` |
 | Change my details | Ask HR to change contact details | `profile_change_requests` |
 | Notifications | List, mark read, open the right screen; live while the app is open; push when set up | `notifications` (Realtime), `device_tokens` via `register_device_token` |
 | My post | Commanders: their guards, leave to endorse with a reliever | `my_supervised_site_ids`, `decide_leave_request` |
@@ -187,8 +187,9 @@ npm test
 ```
 
 `npm test` (Jest) runs every test against a mocked Supabase API at `https://mock.supabase.test`; any
-request or socket to a real `*.supabase.co` host is refused and fails the test (`jest.setup.js`,
-`jest.after.js`). It covers:
+request, socket or download to a real `*.supabase.co` or `*.amazonaws.com` host is refused and fails
+the test (`jest.setup.js`, `jest.after.js`), so the tests never touch the live project or the S3
+bucket. It covers:
 
 - every service's requests (method, table, columns, filters, body), and what the triggers fill in
   themselves (leave days and status, COE due date, document review status) is never sent
@@ -196,16 +197,20 @@ request or socket to a real `*.supabase.co` host is refused and fails the test (
   checked against the real schema exported from Postgres (`__tests__/fixtures/schema-snapshot.json`,
   from the portal): tables, columns, embedded relations (including embeds PostgREST would refuse as
   ambiguous), filters, functions and their arguments, storage buckets and the folders the storage
-  policies allow
+  policies allow, and what goes to the `files` function (only the guard's own documents, leave
+  attachments and selfies, never for someone else; links asked only for S3 keys)
 - activation and its message for each answer, sign-in, staff accounts refused, the forced new
   password, sign-out removing the phone and wiping the keychain, cache and downloads, a fresh install
   after a previous one, offline starts
 - peso, date and mobile formats, leave days, notification deep links, the commander's endorsement,
   push registration, the app lock, screenshot blocking, the WCAG contrast of both palettes, and the
   portal's status wording
+- files in S3: a renewal sent to its document type's folder and the row keeping the S3 key, an S3
+  file opened through a five-minute link while an older one still opens from Supabase Storage, and
+  the payslip PDF made by the payslip-pdf function and opened from the cache that sign-out wipes
 - time in and out: the location check gives the same answer as `log_attendance` for the same points
   (the database tests use them too), Android's permission answers, the mock location flag, the app's
-  own time limit, the selfie's folder, size and type, the log's arguments with and without a
+  own time limit, the selfie sent to the files function with its kind, its size and type, the log's arguments with and without a
   location, the photo deleted after sending, what to log next (night shifts included)
 - screens driven through the real navigator: activation, payslips, filing leave, acknowledging an
   announcement, opening a notification, endorsing leave, time in from Home (checked, photographed,
@@ -224,17 +229,21 @@ npm run sync:portal
   secrets.
 - The session and every screen's saved data are encrypted in the phone's keychain
   (`react-native-keychain`: Android Keystore, iOS Keychain, this device only, no backup). Sign-out
-  deletes them, the downloaded PDFs and the phone's push token. A fresh install on iOS wipes what a
+  deletes them, the downloaded PDFs (certificates and payslips) and the phone's push token. A fresh install on iOS wipes what a
   previous install left.
 - Government numbers are never saved on the phone and are masked until tapped. Payslip and
   government number screens block screenshots and recordings on Android (`FLAG_SECURE`); iOS cannot
   block screenshots, so the app covers itself in the app switcher.
+- Files (documents, leave attachments, selfies, certificates) go to Bannuar's private Amazon S3
+  bucket, one folder per employee number, through the `files` Edge Function, which holds the AWS keys
+  and lets the database decide what each person may store or open. The app holds no AWS key; links
+  last five minutes. Payslips are never stored: their PDF is made when the guard downloads it.
 - Nothing personal goes to logs; there is no analytics or crash-reporting SDK. Push text never carries
   amounts or personal numbers (the `send-push` function writes it).
 - App lock (off by default): the phone's own fingerprint, face or PIN.
 - Time in and out: the location is read once while the guard logs ("while using the app" only,
   never in the background) and goes only with the log. The selfie is taken with the camera, never
-  picked from the gallery, sent to the private `attendance-photos` bucket and deleted from the phone
+  picked from the gallery, sent to the guard's own folder in Bannuar's private S3 bucket and deleted from the phone
   at once (also when the guard leaves without sending). The phone keeps no coordinates and no photo;
   its list of logs is encrypted like the rest. Staff and the post's commanders can open the photos.
 
@@ -243,8 +252,9 @@ npm run sync:portal
 - **Bottom bar:** `@react-navigation/bottom-tabs` with a bar drawn by the app (`src/navigations/TabBar.tsx`).
 - **Encrypted storage:** `react-native-keychain` for the session, the offline data and the app lock;
   one module instead of three.
-- **Opening a COE PDF:** `react-native-blob-util` downloads it from a one-minute signed link into the
-  app's private cache and hands it to the phone's PDF viewer (Android) or preview with share (iOS).
+- **Opening a PDF (a certificate, a document, a payslip):** `react-native-blob-util` downloads it from
+  a five-minute S3 link (or, for a payslip, from the `payslip-pdf` function, which makes it on the spot)
+  into the app's private cache and hands it to the phone's PDF viewer (Android) or preview with share (iOS).
   One module does both; the alternatives need two (`react-native-fs` with `react-native-share` or a
   file viewer). The copy is deleted at sign-out.
 - **Screenshots:** a 20-line module in the app (`SecureWindowModule.kt`) instead of a library.

@@ -18,6 +18,30 @@ type Answer = {status?: number; body?: Json; headers?: Record<string, string>} |
 type RpcHandler = (args: Record<string, unknown>) => Answer;
 
 export const MOCK_URL = 'https://mock.supabase.test';
+/** Where the mock's five-minute S3 links point (a stand-in host; real AWS hosts are refused). */
+export const MOCK_S3 = 'https://files.mock.test';
+/** The S3 folder each mock document type files into (document_types.storage_folder). */
+export const DOC_FOLDERS: Record<string, string> = {dt1: 'lesp', dt2: 'work-requirements', dt3: '201-file'};
+
+/**
+ * The fields of a multipart body: Node's FormData in the tests (a file part reads "[file]"), or React
+ * Native's (getParts) on a phone. null when the body is not a form.
+ */
+export function formFields(body: unknown): Record<string, string> | null {
+  const node = body as {forEach?: (cb: (v: unknown, k: string) => void) => void; get?: unknown} | null;
+  if (node && typeof node.forEach === 'function' && typeof node.get === 'function') {
+    const out: Record<string, string> = {};
+    node.forEach((v, k) => {
+      out[k] = typeof v === 'string' && v !== '[object Object]' ? v : '[file]';
+    });
+    return out;
+  }
+  const parts = (body as {getParts?: () => {fieldName: string; string?: string}[]} | null)?.getParts?.();
+  if (parts) {
+    return Object.fromEntries(parts.map(p => [p.fieldName, p.string ?? '[file]']));
+  }
+  return null;
+}
 export const USER_ID = 'u-bea';
 export const EMPLOYEE_ID = 'e-bea';
 
@@ -183,6 +207,24 @@ export function installMockApi(): MockApi {
     if (path === '/functions/v1/activate-employee') {
       const a = api.activate(body as Record<string, unknown>);
       return answer(a);
+    }
+    if (path === '/functions/v1/files') {
+      // like the files function: the database picks the folder and the name, under employees/G-002/
+      const fields = formFields(body);
+      if (fields) {
+        const n = api.requests.length;
+        const kind = (fields.kind ?? '').replace('_', '-');
+        const folder =
+          fields.purpose === 'document' ? DOC_FOLDERS[fields.document_type_id] ?? '201-file' : fields.purpose === 'attendance' ? 'attendance/2026/11' : fields.purpose;
+        const name = fields.purpose === 'attendance' ? `2026-11-11_0802_${kind}_mock${n}.jpg` : `2026-11-11_${fields.purpose}_mock${n}.jpg`;
+        const key = `employees/G-002/${folder}/${name}`;
+        return answer({id: `sf-${n}`, key, name, content_type: 'image/jpeg', size_bytes: 1000});
+      }
+      const b = body as {action?: string; keys?: string[]};
+      if (b?.action === 'sign') {
+        return answer({urls: Object.fromEntries((b.keys ?? []).map(k => [k, `${MOCK_S3}/${k}?X-Amz-Expires=300`])), expires_in: 300});
+      }
+      return answer({status: 400, body: {code: 'invalid_input', message: 'Something is missing from the request. Try again.'}});
     }
     // ---------------------------------------------------------------- storage
     if (path.startsWith('/storage/v1/object/sign/')) {

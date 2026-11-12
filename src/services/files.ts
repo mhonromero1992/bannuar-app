@@ -2,18 +2,23 @@ import {errorCodes, isErrorWithCode, pick, types} from '@react-native-documents/
 import {Platform} from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {launchCamera, launchImageLibrary, type ImagePickerResponse} from 'react-native-image-picker';
-import {supabase} from '../config/supabase';
-import {randomId} from '../lib/ids';
+import {env} from '../config/env';
+import {SUPABASE_URL, supabase} from '../config/supabase';
 import {withoutRelock} from './appLock';
 
 /**
- * Files in and out of the private buckets.
+ * Files in and out of Amazon S3.
  *
- * Opening a certificate PDF: react-native-blob-util downloads it from a one-minute signed link into
- * the app's own cache, then hands it to the phone's PDF viewer (a FileProvider link on Android, the
- * preview with its share button on iOS). One module does both the download and the hand-over; the
- * alternatives need two (react-native-fs with react-native-share or a file viewer). The copy stays in
- * the app's private cache and is deleted at sign-out.
+ * Uploads go to the files Edge Function, which holds the AWS keys and asks the database whether this
+ * employee may store the file and under which key: their own folder,
+ * employees/<employee number>/<201-file | work-requirements | lesp | attendance | leave>/. Nothing about
+ * AWS is in the app. Files stored before the switch to S3 are still in Supabase Storage and still open
+ * (their paths do not start with employees/).
+ *
+ * Opening a file: react-native-blob-util downloads it from a short-lived link (or, for a payslip, from
+ * the payslip-pdf function, which makes the PDF on the spot) into the app's own cache, then hands it to
+ * the phone's viewer (a FileProvider link on Android, the preview with its share button on iOS). The
+ * copy stays in the app's private cache and is deleted at sign-out.
  */
 export interface PickedFile {
   uri: string;
@@ -22,7 +27,7 @@ export interface PickedFile {
   size: number | null;
 }
 
-/** The employee-files bucket's limits (schema.sql, section 13). */
+/** What the files function takes for documents and leave attachments (schema.sql, upload_rule). */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 export const UPLOAD_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -76,38 +81,95 @@ export async function chooseDocument(): Promise<PickedFile | null> {
   }
 }
 
+/** Files kept in Amazon S3 have keys like employees/G-002/lesp/...; older ones are in Supabase Storage. */
+export const isS3Key = (path: string | null | undefined): path is string => Boolean(path && path.startsWith('employees/'));
+
+export type UploadPurpose = 'document' | 'leave' | 'attendance';
+export interface StoredFile {
+  id: string;
+  key: string;
+  name: string;
+  content_type: string;
+  size_bytes: number;
+}
+
+/** The signed-in guard's own token and the public key, for the Edge Functions. */
+export async function functionHeaders(): Promise<Record<string, string>> {
+  const {data} = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) {
+    throw new Error('Your sign-in has expired. Sign in again.');
+  }
+  return {Authorization: `Bearer ${token}`, apikey: env.supabaseKey};
+}
+
+async function failure(res: Response, fallback: string): Promise<Error> {
+  const body = (await res.json().catch(() => null)) as {message?: string} | null;
+  return new Error(body?.message || fallback);
+}
+
 /**
- * Uploads to employee-files/<employee id>/uploads/<random>.<ext>, the only folder the storage policy
- * lets an employee write to. Returns the path to store on the row.
+ * Sends a file to the employee's own S3 folder through the files Edge Function. The database picks
+ * the folder (the document type's: 201-file, work-requirements or lesp; or leave, or
+ * attendance/<year>/<month>) and the name. Returns what was stored, with the key to save on the row.
  */
-export async function uploadEmployeeFile(employeeId: string, file: PickedFile): Promise<string> {
+export async function uploadMyFile(
+  purpose: UploadPurpose,
+  file: PickedFile,
+  extra: {documentTypeId?: string; kind?: 'time_in' | 'time_out'} = {},
+): Promise<StoredFile> {
   const problem = fileProblem(file);
   if (problem) {
     throw new Error(problem);
   }
-  const path = `${employeeId}/uploads/${randomId()}.${UPLOAD_TYPES[file.type]}`;
   const form = new FormData();
-  // React Native reads the file itself from its uri (content:// or file://) while sending
-  form.append('', {uri: file.uri, name: file.name, type: file.type} as unknown as Blob);
-  const {error} = await supabase.storage.from('employee-files').upload(path, form, {contentType: file.type, upsert: false});
-  if (error) {
-    throw error;
+  form.append('purpose', purpose);
+  if (extra.documentTypeId) {
+    form.append('document_type_id', extra.documentTypeId);
   }
-  return path;
+  if (extra.kind) {
+    form.append('kind', extra.kind);
+  }
+  // React Native reads the file itself from its uri (content:// or file://) while sending
+  form.append('file', {uri: file.uri, name: file.name, type: file.type} as unknown as Blob);
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/files`, {method: 'POST', headers: await functionHeaders(), body: form});
+  if (!res.ok) {
+    throw await failure(res, 'The file could not be sent. Try again.');
+  }
+  return (await res.json()) as StoredFile;
+}
+
+/** A five-minute link to one of the employee's S3 files, made by the files function. */
+async function s3Link(key: string): Promise<string> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/files`, {
+    method: 'POST',
+    headers: {...(await functionHeaders()), 'Content-Type': 'application/json'},
+    body: JSON.stringify({action: 'sign', keys: [key], download: true}),
+  });
+  if (!res.ok) {
+    throw await failure(res, 'The file could not be opened. Try again.');
+  }
+  const link = ((await res.json()) as {urls?: Record<string, string>}).urls?.[key];
+  if (!link) {
+    throw new Error('This file is not available to you.');
+  }
+  return link;
 }
 
 const CACHE_DIR = () => `${ReactNativeBlobUtil.fs.dirs.CacheDir}/bannuar-files`;
 const MIME: Record<string, string> = {pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', heic: 'image/heic'};
 
-/** Downloads a private file through a one-minute signed link and opens it in the phone's viewer. */
-export async function openPrivateFile(bucket: 'certificates' | 'employee-files', path: string, fileName: string): Promise<void> {
-  const {data, error} = await supabase.storage.from(bucket).createSignedUrl(path, 60);
-  if (error || !data?.signedUrl) {
-    throw error ?? new Error('The file could not be opened.');
-  }
+/**
+ * Downloads a file into the app's cache and opens it in the phone's viewer. The request is a GET of a
+ * signed link, or a POST to an Edge Function (the payslip PDF).
+ */
+export async function downloadAndOpen(
+  request: {method: 'GET' | 'POST'; url: string; headers?: Record<string, string>; body?: string},
+  fileName: string,
+): Promise<void> {
   const safe = fileName.replace(/[^A-Za-z0-9._-]/g, '_');
   const target = `${CACHE_DIR()}/${safe}`;
-  const res = await ReactNativeBlobUtil.config({fileCache: true, path: target}).fetch('GET', data.signedUrl);
+  const res = await ReactNativeBlobUtil.config({fileCache: true, path: target}).fetch(request.method, request.url, request.headers, request.body);
   const status = res.info().status;
   if (status < 200 || status >= 300) {
     throw new Error('The file could not be downloaded. Try again.');
@@ -118,6 +180,24 @@ export async function openPrivateFile(bucket: 'certificates' | 'employee-files',
   } else {
     ReactNativeBlobUtil.ios.previewDocument(res.path());
   }
+}
+
+/**
+ * Opens one of the employee's files: from S3 through a five-minute link, or (files from before the
+ * switch) from Supabase Storage through a one-minute link.
+ */
+export async function openPrivateFile(bucket: 'certificates' | 'employee-files', path: string, fileName: string): Promise<void> {
+  let link: string;
+  if (isS3Key(path)) {
+    link = await s3Link(path);
+  } else {
+    const {data, error} = await supabase.storage.from(bucket).createSignedUrl(path, 60);
+    if (error || !data?.signedUrl) {
+      throw error ?? new Error('The file could not be opened.');
+    }
+    link = data.signedUrl;
+  }
+  await downloadAndOpen({method: 'GET', url: link}, fileName);
 }
 
 /** Deletes every downloaded file (sign-out). */

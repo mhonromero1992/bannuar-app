@@ -1,17 +1,18 @@
 import {Platform} from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {env} from '../src/config/env';
+import {signIn} from '../src/services/auth';
 import {announcementImages, loadAnnouncements, markAnnouncementRead, sortAnnouncements, waitingForAck} from '../src/services/announcements';
 import {changedFields, changeProblem, currentValues, requestChange} from '../src/services/changes';
 import {cancelCoe, isOverdue, loadCoe, openCertificate, requestCoe, verifyUrl} from '../src/services/coe';
-import {fileProblem, uploadEmployeeFile} from '../src/services/files';
+import {fileProblem, openPrivateFile, uploadMyFile} from '../src/services/files';
 import {cancelLeave, fileLeave, loadLeave} from '../src/services/leave';
 import {loadNotifications, markAllNotificationsRead, markNotificationRead, unreadCount} from '../src/services/notifications';
-import {loadConcerns, loadPayslips, payslipLines, reportConcern} from '../src/services/payslips';
+import {loadConcerns, loadPayslips, openPayslipPdf, payslipLines, reportConcern} from '../src/services/payslips';
 import {loadMe} from '../src/services/profile';
 import {loadDocumentAlerts, loadDocuments, loadGovernmentIds, uploadRenewal} from '../src/services/records';
 import type {Announcement, Me, Payslip} from '../src/types/db';
-import {clearKeychain, EMPLOYEE_ID, installMockApi, type MockApi} from './support/mockApi';
+import {clearKeychain, EMPLOYEE_ID, formFields, installMockApi, MOCK_S3, type MockApi} from './support/mockApi';
 
 let api: MockApi;
 beforeEach(() => {
@@ -190,7 +191,8 @@ describe('my records', () => {
     await loadDocumentAlerts(EMPLOYEE_ID);
     expect(api.rest('GET', 'document_alerts')[0].query.get('employee_id')).toBe(`eq.${EMPLOYEE_ID}`);
   });
-  it('a renewal: the file to <id>/uploads/<uuid>.<ext>, then the row without a status (the trigger sets pending_review)', async () => {
+  it('a renewal: the file to the type\'s S3 folder through the files function, then the row without a status', async () => {
+    await signIn('G-002', api.password); // the files functions take the guard's own token
     await uploadRenewal({
       employeeId: EMPLOYEE_ID,
       documentTypeId: 'dt1',
@@ -199,20 +201,47 @@ describe('my records', () => {
       expiresOn: '2028-11-01',
       file: {uri: 'file:///tmp/lic.jpg', name: 'lic.jpg', type: 'image/jpeg', size: 200_000},
     });
-    const up = api.requests.find(r => r.method === 'POST' && r.path.startsWith('/storage/v1/object/employee-files/'));
-    expect(up?.path).toMatch(new RegExp(`^/storage/v1/object/employee-files/${EMPLOYEE_ID}/uploads/[0-9a-f-]{36}\\.jpg$`));
+    const up = api.requests.find(r => r.method === 'POST' && r.path === '/functions/v1/files');
+    expect(formFields(up?.body)).toEqual({purpose: 'document', document_type_id: 'dt1', file: '[file]'});
+    expect(up?.headers.authorization).toMatch(/^Bearer /);
+    expect(up?.headers.apikey).toBeTruthy();
+    expect(api.requests.some(r => r.path.startsWith('/storage/v1/object/employee-files'))).toBe(false);
     const row = api.rest('POST', 'employee_documents')[0].body as Record<string, unknown>;
     expect(row).toEqual({
       employee_id: EMPLOYEE_ID, document_type_id: 'dt1', document_no: 'LIC-2', issued_on: '2026-11-01', expires_on: '2028-11-01',
-      file_path: expect.stringMatching(new RegExp(`^${EMPLOYEE_ID}/uploads/`)),
+      file_path: expect.stringMatching(/^employees\/G-002\/lesp\/2026-11-11_document_mock\d+\.jpg$/),
     });
     expect(row).not.toHaveProperty('status');
   });
-  it('files the bucket refuses are stopped on the phone', async () => {
+  it('files the files function refuses are stopped on the phone', async () => {
     expect(fileProblem({uri: 'x', name: 'a.docx', type: 'application/msword', size: 10})).toMatch(/PDF or a photo/);
     expect(fileProblem({uri: 'x', name: 'a.pdf', type: 'application/pdf', size: 11 * 1024 * 1024})).toMatch(/too big/);
-    await expect(uploadEmployeeFile(EMPLOYEE_ID, {uri: 'x', name: 'a.zip', type: 'application/zip', size: 1})).rejects.toThrow(/PDF or a photo/);
+    await expect(uploadMyFile('leave', {uri: 'x', name: 'a.zip', type: 'application/zip', size: 1})).rejects.toThrow(/PDF or a photo/);
     expect(api.requests.length).toBe(0);
+  });
+  it('S3 files open through a five-minute link from the files function; older ones from Supabase Storage', async () => {
+    await signIn('G-002', api.password); // the files functions take the guard's own token
+    const key = 'employees/G-002/lesp/2026-11-11_security-license_ab12cd34ef.jpg';
+    await openPrivateFile('employee-files', key, 'lic.jpg');
+    const ask = api.requests.find(r => r.path === '/functions/v1/files');
+    expect(ask?.body).toEqual({action: 'sign', keys: [key], download: true});
+    const blob = (global as unknown as {__blob: {fetched: {url: string; method: string}[]}}).__blob;
+    expect(blob.fetched.at(-1)).toMatchObject({method: 'GET', url: `${MOCK_S3}/${key}?X-Amz-Expires=300`});
+    await openPrivateFile('employee-files', `${EMPLOYEE_ID}/uploads/old.jpg`, 'old.jpg');
+    expect(api.requests.some(r => r.path === `/storage/v1/object/sign/employee-files/${EMPLOYEE_ID}/uploads/old.jpg`)).toBe(true);
+  });
+  it('a payslip PDF is made on request by the payslip-pdf function and opened, never stored', async () => {
+    await signIn('G-002', api.password); // the files functions take the guard's own token
+    await openPayslipPdf({id: 'ps1', period: {id: 'p1', label: 'Oct 16 to 31, 2026', period_start: '2026-10-16', period_end: '2026-10-31', pay_date: '2026-11-05'}});
+    const blob = (global as unknown as {__blob: {fetched: {url: string; method: string; headers: Record<string, string>; body: string; path: string}[]; opened: {path: string}[]}}).__blob;
+    const got = blob.fetched.at(-1)!;
+    expect(got.method).toBe('POST');
+    expect(got.url).toBe('https://mock.supabase.test/functions/v1/payslip-pdf');
+    expect(JSON.parse(got.body)).toEqual({payslip_id: 'ps1'});
+    expect(got.headers.Authorization).toMatch(/^Bearer /);
+    expect(got.path).toBe('/cache/bannuar-files/payslip-2026-10-16-to-2026-10-31.pdf'); // the cache wiped at sign-out
+    expect(blob.opened.at(-1)?.path).toBe(got.path);
+    expect(api.requests.some(r => r.path === '/functions/v1/files')).toBe(false);
   });
 });
 

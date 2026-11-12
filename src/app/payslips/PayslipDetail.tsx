@@ -2,12 +2,12 @@ import {type RouteProp, useNavigation, useRoute} from '@react-navigation/native'
 import React, {useEffect, useState} from 'react';
 import {Pressable, StyleSheet, View} from 'react-native';
 import {useTheme} from 'styled-components/native';
-import {AmountLine, Button, Card, Empty, ErrorState, HiddenAmount, Icon, KeyValue, Loading, Screen, SectionLabel, Txt} from '../../components/ui';
+import {AmountLine, Button, Card, Empty, ErrorState, HiddenAmount, Icon, KeyValue, Loading, Notice, Screen, SectionLabel, Txt} from '../../components/ui';
 import {TOUCH} from '../../config/theme';
 import {errorText} from '../../lib/errors';
 import {fmtDate, fmtDateRange, fmtNumber} from '../../lib/format';
 import type {RootStackParamList} from '../../navigations/types';
-import {loadPayslip, payslipLines} from '../../services/payslips';
+import {loadPayslip, openPayslipPdf, payslipLines} from '../../services/payslips';
 import {useSecureScreen} from '../../services/secureScreen';
 import {KEYS} from '../../store/keys';
 import {useResources} from '../../store/resources';
@@ -56,6 +56,19 @@ export default function PayslipDetail() {
 
 function PayslipBody({p, shown, onReport}: {p: Payslip; shown: boolean; onReport: () => void}) {
   const lines = payslipLines(p);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const openPdf = async () => {
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      await openPayslipPdf(p);
+    } catch (e) {
+      setPdfError(errorText(e));
+    } finally {
+      setPdfBusy(false);
+    }
+  };
   return (
     <>
       <View>
@@ -96,6 +109,15 @@ function PayslipBody({p, shown, onReport}: {p: Payslip; shown: boolean; onReport
         </View>
         {p.remarks ? <KeyValue label="Remarks" value={p.remarks} /> : null}
       </Card>
+      {pdfError ? <Notice tone="bad">{pdfError}</Notice> : null}
+      <Button
+        title="Download PDF"
+        variant="secondary"
+        icon="file"
+        busy={pdfBusy}
+        onPress={openPdf}
+        accessibilityHint="Makes this payslip as a PDF and opens it in your PDF viewer, where you can save, share or print it"
+      />
       <Button title="Report a concern" variant="secondary" onPress={onReport} />
     </>
   );
