@@ -28,7 +28,7 @@ Gaia, in the same layout as the atlas app. Design: [DESIGN.md](DESIGN.md).
 | Change my details | Ask HR to change contact details | `profile_change_requests` |
 | Notifications | List, mark read, open the right screen; live while the app is open; push when set up | `notifications` (Realtime), `device_tokens` via `register_device_token` |
 | My post | Commanders: their guards, leave to endorse with a reliever | `my_supervised_site_ids`, `decide_leave_request` |
-| Account | Change password, app lock, privacy notice, version, sign out | |
+| Account | Change password, app lock, appearance (same as the phone, light or dark), privacy notice, version, sign out | |
 
 Every list screen has loading, empty, error and offline states. Offline, it shows what was loaded
 last with "Offline · updated 8 Nov 2026, 2:05 PM".

@@ -6,6 +6,7 @@ import {Button, Card, KeyValue, Notice, Row, Screen, SectionLabel, Txt} from '..
 import {env} from '../../config/env';
 import {isLockOn, lockSupported, turnLockOff, turnLockOn} from '../../services/appLock';
 import {APP_VERSION} from '../../services/version';
+import {type Appearance, useAppearance} from '../../store/appearance';
 import {useSession} from '../../store/session';
 
 /** Password, app lock, the privacy notice, the app version and sign-out. */
@@ -16,6 +17,8 @@ export default function Account() {
   const signOut = useSession(s => s.signOut);
   const [lock, setLock] = useState(false);
   const [lockNote, setLockNote] = useState<string | null>(null);
+  const appearance = useAppearance(s => s.appearance);
+  const setAppearance = useAppearance(s => s.setAppearance);
 
   useEffect(() => {
     isLockOn().then(setLock);
@@ -62,6 +65,21 @@ export default function Account() {
         {lockNote ? <Notice tone="warn">{lockNote}</Notice> : null}
       </Card>
       <Card>
+        <SectionLabel>Appearance</SectionLabel>
+        <View style={styles.choices} accessibilityRole="radiogroup" accessibilityLabel="Appearance">
+          {APPEARANCES.map(a => (
+            <Button
+              key={a.value}
+              title={a.label}
+              variant={appearance === a.value ? 'primary' : 'secondary'}
+              onPress={() => setAppearance(a.value)}
+              accessibilityHint={a.hint}
+              testID={`appearance-${a.value}`}
+            />
+          ))}
+        </View>
+      </Card>
+      <Card>
         <Row icon="shield" title="Privacy notice" detail="How Bannuar uses your details (Data Privacy Act)" onPress={() => Linking.openURL(`${env.websiteUrl}/privacy`)} last />
       </Card>
       <Txt variant="small" color="muted">{`Bannuar app ${APP_VERSION}`}</Txt>
@@ -81,7 +99,14 @@ export default function Account() {
   );
 }
 
+const APPEARANCES: {value: Appearance; label: string; hint: string}[] = [
+  {value: 'system', label: 'Same as the phone', hint: 'Light or dark, as the phone is set'},
+  {value: 'light', label: 'Light', hint: 'Always light'},
+  {value: 'dark', label: 'Dark', hint: 'Always dark, for night duty'},
+];
+
 const styles = StyleSheet.create({
+  choices: {gap: 8},
   switchRow: {flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56},
   flex: {flex: 1},
 });
