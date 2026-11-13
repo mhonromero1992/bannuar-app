@@ -192,6 +192,9 @@ export default function RootLayout() {
               <Stack.Screen name="MyPost" component={Screens.MyPost} />
               <Stack.Screen name="Endorse" component={Screens.Endorse} />
               <Stack.Screen name="GuardAttendance" component={Screens.GuardAttendance} />
+              <Stack.Screen name="ReportIncident" component={Screens.ReportIncident} />
+              <Stack.Screen name="Notices" component={Screens.Notices} />
+              <Stack.Screen name="NoticeDetail" component={Screens.NoticeDetail} />
               <Stack.Screen name="Account" component={Screens.Account} />
               <Stack.Screen name="ChangePassword" component={Screens.ChangePassword} />
             </>

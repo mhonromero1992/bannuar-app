@@ -1,7 +1,7 @@
 import {useNavigation} from '@react-navigation/native';
 import React from 'react';
 import {StyleSheet, View} from 'react-native';
-import {Badge, Card, Empty, ResourceView, Row, Screen, SectionLabel, Txt} from '../../components/ui';
+import {Badge, Button, Card, Empty, ResourceView, Row, Screen, SectionLabel, Txt} from '../../components/ui';
 import {EMPLOYEE_STATUS, label, tone} from '../../config/labels';
 import {fmtDateRange, fmtNumber, fullName} from '../../lib/format';
 import {loadPost} from '../../services/commander';
@@ -22,6 +22,7 @@ export default function MyPost() {
         {data => (
           <>
             <Txt color="muted">{data.sites.map(s => s.name).join(' · ')}</Txt>
+            <Button title="Report an incident" icon="alert" variant="secondary" onPress={() => nav.navigate('ReportIncident')} testID="report-incident" />
             <View style={styles.section}>
               <SectionLabel>Leave to endorse</SectionLabel>
               {data.pending.length ? (

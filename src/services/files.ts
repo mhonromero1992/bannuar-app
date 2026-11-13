@@ -82,7 +82,7 @@ export async function chooseDocument(): Promise<PickedFile | null> {
 }
 
 /** Files kept in Amazon S3 have keys like employees/G-002/lesp/...; older ones are in Supabase Storage. */
-export const isS3Key = (path: string | null | undefined): path is string => Boolean(path && path.startsWith('employees/'));
+export const isS3Key = (path: string | null | undefined): path is string => Boolean(path && /^(employees|company)\//.test(path));
 
 export type UploadPurpose = 'document' | 'leave' | 'attendance';
 export interface StoredFile {

@@ -26,6 +26,10 @@ export function routeForLink(link?: NotificationLink | null): Route {
       return {name: 'Records'};
     case 'ProfileChange':
       return {name: 'ChangeDetails'};
+    case 'Notices':
+      return {name: 'Notices'};
+    case 'Attendance':
+      return {name: 'Attendance'};
     case 'Documents':
       return {name: 'Documents', params: id ? {focusId: id} : undefined};
     default:

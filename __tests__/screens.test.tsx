@@ -1,4 +1,4 @@
-import {NativeModules, PermissionsAndroid, Platform} from 'react-native';
+import {Alert, NativeModules, PermissionsAndroid, Platform} from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {launchCamera} from 'react-native-image-picker';
 import React from 'react';
@@ -229,6 +229,87 @@ describe('the commander, on screen', () => {
     await choose('Reliever', 'Edu Tan');
     await press(byTestId('endorse-yes'));
     expect(api.rpcCalls('decide_leave_request')[0].body).toEqual({p_request_id: 'lr1', p_approve: true, p_note: null, p_reliever_id: 'e4'});
+  });
+});
+
+describe('notices from HR, on screen', () => {
+  const notice = {
+    id: 'case1', case_no: 'DC-2026-000001', status: 'nte_issued', rule: {ref: 'A-1', title: 'Sleeping on post'}, offense_no: 1,
+    nte_text: 'This notice is about 2 AM at the main gate, where you were found asleep. This may violate A-1 Sleeping on post.',
+    nte_issued_at: '2026-11-12T01:00:00Z', explain_by: '2099-11-18T09:00:00Z', nte_received_at: null as string | null, explanation: null, explained_at: null,
+    wants_hearing: false, hearing_at: null, hearing_place: null, hearing_held_at: null, decision: null, suspension_days: null, suspension_from: null,
+    decision_text: null, decided_at: null, decision_received_at: null, preventive_from: null, preventive_to: null, preventive_reason: null, withdrawn_reason: null,
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('Home says a notice waits; the guard acknowledges it and answers, asking for a meeting; screenshots are blocked', async () => {
+    const n = {...notice};
+    api.rpc.my_disciplinary_cases = () => [n];
+    api.rpc.acknowledge_case_notice = () => {
+      n.nte_received_at = '2026-11-12T02:00:00Z';
+      return null;
+    };
+    await start(true);
+    expect(hasText('A notice waits for you')).toBe(true);
+    await go('Notices');
+    expect(useUi.getState().secureScreen).toBe(true);
+    expect(hasText('Open it and say you received it')).toBe(true);
+    await press(byTestId('notice-case1'));
+    expect(hasText('A-1 Sleeping on post')).toBe(true);
+    await press(byTestId('notice-ack'));
+    expect(api.rpcCalls('acknowledge_case_notice')[0].body).toEqual({p_case_id: 'case1', p_which: 'nte'});
+    expect(hasText('You said you received it')).toBe(true);
+
+    await type('What happened, in your words', 'I was on my break at the guard house and not asleep at the gate.');
+    const hearing = root().findAll(n2 => n2.props.testID === 'notice-hearing' && typeof n2.props.onValueChange === 'function')[0];
+    await act(async () => {
+      hearing.props.onValueChange(true);
+    });
+    jest.spyOn(Alert, 'alert').mockImplementation((_t, _m, buttons) => {
+      buttons?.find(b => b.text === 'Send')?.onPress?.();
+    });
+    await press(byTestId('notice-send'));
+    await settle();
+    expect(api.rpcCalls('submit_case_explanation')[0].body).toEqual({
+      p_case_id: 'case1',
+      p_text: 'I was on my break at the guard house and not asleep at the gate.',
+      p_wants_hearing: true,
+    });
+  });
+
+  it('a decision is read and acknowledged; the Code of Discipline in force opens', async () => {
+    const decided = {...notice, status: 'decided', nte_received_at: '2026-11-12T02:00:00Z', explanation: 'I was on my break.', explained_at: '2026-11-13T00:00:00Z', decision: 'suspension', suspension_days: 7, suspension_from: '2026-11-20', decision_text: 'After hearing both sides, seven days under A-1.', decided_at: '2026-11-19T00:00:00Z'};
+    api.rpc.my_disciplinary_cases = () => [decided];
+    api.rpc.active_discipline_code = () => ({title: 'Code of Discipline 2026', effective_on: '2026-01-01', file_key: 'company/code-of-discipline/2026-01-01_code-of-discipline_0a1b2c3d4e.pdf'});
+    await start(true);
+    await go('NoticeDetail', {id: 'case1'});
+    expect(hasText('A suspension without pay of 7 days')).toBe(true);
+    await press(byTestId('decision-ack'));
+    expect(api.rpcCalls('acknowledge_case_notice')[0].body).toEqual({p_case_id: 'case1', p_which: 'decision'});
+    await go('Notices');
+    await press(byTestId('read-code'));
+    const sign = api.requests.find(r => r.path === '/functions/v1/files' && (r.body as {action?: string})?.action === 'sign');
+    expect((sign?.body as {keys: string[]}).keys).toEqual(['company/code-of-discipline/2026-01-01_code-of-discipline_0a1b2c3d4e.pdf']);
+  });
+
+  it('a commander reports an incident at his post, with the guard and the time in Manila', async () => {
+    api.rpc.my_access = () => access({roles: ['employee', 'supervisor']});
+    api.rpc.my_supervised_site_ids = () => ['s1'];
+    api.tables.sites = [{id: 's1', name: 'Post A'}];
+    api.tables.employees.push({id: 'e3', employee_no: 'G-003', first_name: 'Carlo', last_name: 'Diaz', position: 'Security Guard', status: 'active', site_id: 's1'});
+    await start(true);
+    await go('MyPost');
+    await press(byTestId('report-incident'));
+    expect(navigationRef.getCurrentRoute()?.name).toBe('ReportIncident');
+    await choose('Guard involved (optional)', 'Carlo Diaz');
+    await type('Time', '02:30');
+    await type('Title', 'Asleep on post');
+    await type('What happened', 'Found asleep at the main gate during my 2 AM round.');
+    await press(byTestId('incident-send'));
+    const body = api.rpcCalls('file_incident_report')[0].body as Record<string, unknown>;
+    expect(body).toMatchObject({p_site_id: 's1', p_employee_id: 'e3', p_title: 'Asleep on post', p_details: 'Found asleep at the main gate during my 2 AM round.', p_guard_described: null});
+    expect(String(body.p_occurred_at)).toMatch(/T18:30:00\.000Z$/);
+    expect(hasText('Report IR-2026-000007 sent to HR.')).toBe(true);
   });
 });
 

@@ -12,6 +12,7 @@ export const KEYS = {
   notifications: 'notifications',
   post: 'post',
   attendance: 'attendance',
+  notices: 'notices',
 } as const;
 
 /** A commander's view of one guard's time in and out (not kept on the phone). */

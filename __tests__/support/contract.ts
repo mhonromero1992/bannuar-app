@@ -239,8 +239,8 @@ export function checkRequests(requests: Recorded[], schema: Snapshot, employeeId
           }
         } else {
           const b = r.body as {action?: string; keys?: unknown} | null;
-          if (b?.action !== 'sign' || !Array.isArray(b.keys) || !b.keys.every(k => typeof k === 'string' && k.startsWith('employees/'))) {
-            problems.add(`${where}: the files function is asked only to sign S3 keys (employees/...)`);
+          if (b?.action !== 'sign' || !Array.isArray(b.keys) || !b.keys.every(k => typeof k === 'string' && /^(employees|company\/code-of-discipline)\//.test(k))) {
+            problems.add(`${where}: the files function is asked only to sign S3 keys (employees/... or the Code of Discipline)`);
           }
         }
       }

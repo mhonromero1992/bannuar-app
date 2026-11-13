@@ -21,7 +21,8 @@ export default function More() {
         <Row icon="megaphone" title="Announcements" onPress={() => nav.navigate('Announcements')} />
         <Row icon="bell" title="Notifications" detail={unread ? `${unread} unread` : null} onPress={() => nav.navigate('Notifications')} />
         <Row icon="certificate" title="Certificates of employment" onPress={() => nav.navigate('Coe')} />
-        <Row icon="pay" title="Payroll concerns" onPress={() => nav.navigate('Concerns')} last />
+        <Row icon="pay" title="Payroll concerns" onPress={() => nav.navigate('Concerns')} />
+        <Row icon="shield" title="Notices from HR" detail="Notices to explain and decisions" onPress={() => nav.navigate('Notices')} last />
       </Card>
       <Card>
         <Row icon="user" title="My records" detail="Your 201 file, read-only" onPress={() => nav.navigate('Records')} />

@@ -39,6 +39,9 @@ export type RootStackParamList = {
   LogAttendance: {kind: 'time_in' | 'time_out'; guardId?: string};
   MyPost: undefined;
   GuardAttendance: {guardId: string};
+  ReportIncident: undefined;
+  Notices: undefined;
+  NoticeDetail: {id: string};
   Endorse: {id: string};
   Account: undefined;
   ChangePassword: undefined;

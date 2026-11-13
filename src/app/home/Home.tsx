@@ -85,6 +85,14 @@ function HomeBody({data}: {data: HomeData}) {
         {me.status !== 'active' && me.status !== 'floating' ? <Badge tone={tone(EMPLOYEE_STATUS, me.status)}>{label(EMPLOYEE_STATUS, me.status)}</Badge> : null}
       </Card>
 
+      {data.noticesWaiting > 0 ? (
+        <Card onPress={() => nav.navigate('Notices')} accessibilityLabel="Notices from HR. Open them." highlight>
+          <SectionLabel>From HR</SectionLabel>
+          <Txt variant="heading">{data.noticesWaiting === 1 ? 'A notice waits for you' : `${data.noticesWaiting} notices wait for you`}</Txt>
+          <Txt color="muted">Read it and answer in time. You may ask for a meeting.</Txt>
+        </Card>
+      ) : null}
+
       {data.toEndorse !== null ? (
         <Card onPress={() => nav.navigate('MyPost')} accessibilityLabel={`My post. ${data.toEndorse} leave requests to endorse.`}>
           <SectionLabel>My post</SectionLabel>

@@ -36,6 +36,13 @@ export const LOCATION_CHECK: ToneMap = {
   no_post: ['No post assigned', 'neutral'],
   manual: ['Entered by hand', 'info'],
 };
+export const CASE_STATUS: ToneMap = {
+  draft: ['Draft', 'neutral'], nte_issued: ['Waiting for explanation', 'warn'], explained: ['Explained', 'info'],
+  hearing_set: ['Hearing set', 'info'], decided: ['Decided', 'ok'], withdrawn: ['Withdrawn', 'neutral'],
+};
+export const CASE_DECISION: ToneMap = {
+  no_violation: ['No violation', 'ok'], warning: ['Warning', 'warn'], reprimand: ['Reprimand', 'warn'], suspension: ['Suspension', 'bad'], dismissal: ['Dismissal', 'bad'],
+};
 /** Who logged it: the guard's own phone, the post's commander (the guard had no phone), or HR by hand. */
 export const ATTENDANCE_SOURCE: ToneMap = {self: ['Own phone', 'neutral'], commander: ['By the commander', 'info'], manual: ['By hand', 'warn']};
 export const COE_STATUS: ToneMap = {pending: ['Pending', 'warn'], issued: ['Issued', 'ok'], rejected: ['Declined', 'bad'], cancelled: ['Cancelled', 'neutral']};

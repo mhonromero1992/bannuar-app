@@ -163,6 +163,11 @@ export function installMockApi(): MockApi {
         radius_m: args.p_latitude === null ? null : 150,
         site_name: 'Post A',
       }),
+      my_disciplinary_cases: () => [],
+      acknowledge_case_notice: () => null,
+      submit_case_explanation: () => null,
+      active_discipline_code: () => null,
+      file_incident_report: () => ({id: 'ir-1', report_no: 'IR-2026-000007', status: 'received'}),
       log_attendance_for: args => ({
         id: 'at-9',
         kind: args.p_kind,

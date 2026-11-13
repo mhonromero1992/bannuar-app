@@ -5,6 +5,7 @@ import type {Announcement, Me, Num} from '../types/db';
 import {loadAnnouncements, waitingForAck} from './announcements';
 import {isCommander, supervisedSiteIds} from './commander';
 import {run} from './db';
+import {loadNotices, waiting} from './discipline';
 import {loadMe} from './profile';
 import {type DocumentAlert, loadDocumentAlerts} from './records';
 
@@ -26,13 +27,15 @@ export interface HomeData {
   documentAlerts: DocumentAlert[];
   /** Leave waiting for this commander's endorsement; null for guards who command no post. */
   toEndorse: number | null;
+  /** Notices from HR that wait for the guard (only the count is kept on the phone). */
+  noticesWaiting: number;
 }
 
 type SlipRow = {id: string; net_pay: Num; period: {label: string; pay_date: string; period_end: string} | null};
 
 /** Everything the Home screen shows, in parallel requests (each limited to the guard's own rows). */
 export async function loadHome(employeeId: string, roles: string[]): Promise<HomeData> {
-  const [me, announcements, slips, leave, coe, changes, concerns, documentAlerts, toEndorse] = await Promise.all([
+  const [me, announcements, slips, leave, coe, changes, concerns, documentAlerts, toEndorse, notices] = await Promise.all([
     loadMe(employeeId),
     loadAnnouncements(employeeId),
     run(
@@ -63,6 +66,8 @@ export async function loadHome(employeeId: string, roles: string[]): Promise<Hom
     ),
     loadDocumentAlerts(employeeId),
     countToEndorse(employeeId, isCommander(roles)),
+    // a database without the discipline section yet answers with an error: Home still shows
+    loadNotices().catch(() => []),
   ]);
 
   const latest = ((slips ?? []) as unknown as SlipRow[]).sort((a, b) => (b.period?.period_end ?? '').localeCompare(a.period?.period_end ?? ''))[0];
@@ -111,6 +116,7 @@ export async function loadHome(employeeId: string, roles: string[]): Promise<Hom
     openRequests,
     documentAlerts,
     toEndorse,
+    noticesWaiting: waiting(notices).length,
   };
 }
 
