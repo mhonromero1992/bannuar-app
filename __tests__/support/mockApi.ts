@@ -93,6 +93,8 @@ export interface MockApi {
   /** The password the mock accepts at sign-in. */
   password: string;
   activate: (body: Record<string, unknown>) => Answer;
+  /** What the document-ai function answers (Claude's reading, checked). */
+  documentCheck: Answer;
   /** Make every request fail as if the phone had no signal. */
   offline: boolean;
   rest: (method: string, table: string) => Recorded[];
@@ -182,6 +184,10 @@ export function installMockApi(): MockApi {
     },
     password: 'right-password-1',
     activate: () => ({status: 'activated', login_email: 'g-002@employees.bannuar.invalid'}),
+    documentCheck: {
+      status: 'checked', type_ok: true, legibility: 'clear', holder_name: 'LIM, BEA', name_match: 'match', document_no: 'R01-202611-000123',
+      issued_on: '2025-03-06', expires_on: '2027-03-05', expiry: 'valid', concerns: [],
+    },
     offline: false,
     rest: (method, table) => api.requests.filter(r => r.method === method && r.path === `/rest/v1/${table}`),
     rpcCalls: name => api.requests.filter(r => r.path === `/rest/v1/rpc/${name}`),
@@ -223,6 +229,9 @@ export function installMockApi(): MockApi {
     if (path === '/functions/v1/activate-employee') {
       const a = api.activate(body as Record<string, unknown>);
       return answer(a);
+    }
+    if (path === '/functions/v1/document-ai') {
+      return answer(api.documentCheck);
     }
     if (path === '/functions/v1/files') {
       // like the files function: the database picks the folder and the name, under employees/G-002/

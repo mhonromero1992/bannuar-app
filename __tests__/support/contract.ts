@@ -19,7 +19,7 @@ export interface Snapshot {
   buckets?: string[];
 }
 
-export const EDGE_FUNCTIONS = ['activate-employee', 'send-push', 'files', 'payslip-pdf'];
+export const EDGE_FUNCTIONS = ['activate-employee', 'send-push', 'files', 'payslip-pdf', 'document-ai'];
 
 function splitTop(s: string): string[] {
   const out: string[] = [];
@@ -214,6 +214,13 @@ export function checkRequests(requests: Recorded[], schema: Snapshot, employeeId
       const name = r.path.slice('/functions/v1/'.length);
       if (!EDGE_FUNCTIONS.includes(name)) {
         problems.add(`${where}: no Edge Function ${name}`);
+      }
+      if (name === 'document-ai') {
+        // Claude reads only the guard's own upload, by its key; the database checks it is theirs
+        const b = r.body as {action?: string; key?: unknown} | null;
+        if (b?.action !== 'check' || typeof b.key !== 'string' || !b.key.startsWith('employees/G-002/') || Object.keys(b).length !== 2) {
+          problems.add(`${where}: document-ai is asked only to check one of the guard's own uploads`);
+        }
       }
       if (name === 'files') {
         // the app stores only the guard's own documents, leave attachments and selfies, and asks for

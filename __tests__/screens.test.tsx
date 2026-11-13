@@ -232,6 +232,62 @@ describe('the commander, on screen', () => {
   });
 });
 
+describe('a LESP read by Claude at upload, on screen', () => {
+  const lesp = {id: 'dt1', code: 'SECURITY_LICENSE', name: 'Security guard license (LESP)', category: 'license', has_expiry: true, employee_can_upload: true, sort_order: 10, ai_check: true, is_active: true, visible_to_employee: true};
+  const photo = {assets: [{uri: 'file:///cache/lesp.jpg', fileName: 'lesp.jpg', type: 'image/jpeg', fileSize: 400000}]};
+  beforeEach(() => {
+    api.tables.document_types = [lesp];
+    api.tables.employee_documents = [];
+    (launchCamera as jest.Mock).mockResolvedValue(photo);
+  });
+  afterEach(() => {
+    (launchCamera as jest.Mock).mockResolvedValue({didCancel: true});
+  });
+  const takeIt = () => press(pressable(l => l === 'Take a photo'));
+
+  it('the photo is read as soon as it is taken: the number and dates fill in, and the same upload goes to HR', async () => {
+    await start(true);
+    await go('UploadDocument', {documentTypeId: 'dt1'});
+    await takeIt();
+    await settle();
+    const up = api.requests.filter(r => r.path === '/functions/v1/files');
+    expect(up).toHaveLength(1);
+    const check = api.requests.find(r => r.path === '/functions/v1/document-ai');
+    expect((check?.body as {action: string; key: string}).key).toMatch(/^employees\/G-002\/lesp\//);
+    expect(hasText('What Claude read')).toBe(true);
+    expect(hasText('R01-202611-000123')).toBe(true);
+    expect(hasText('Valid')).toBe(true);
+    const numberField = root().findAll(n => n.props.accessibilityLabel === 'Document number (optional)' && typeof n.props.onChangeText === 'function')[0];
+    expect(numberField.props.value).toBe('R01-202611-000123');
+    await press(byTestId('upload-submit'));
+    expect(api.requests.filter(r => r.path === '/functions/v1/files' && r.method === 'POST' && formFields(r.body))).toHaveLength(1);
+    const row = api.rest('POST', 'employee_documents')[0].body as Record<string, unknown>;
+    expect(row).toMatchObject({document_type_id: 'dt1', document_no: 'R01-202611-000123', issued_on: '2025-03-06', expires_on: '2027-03-05'});
+    expect(String(row.file_path)).toBe((check?.body as {key: string}).key);
+  });
+
+  it('an expired license is pointed out, and a name that is not hers', async () => {
+    api.documentCheck = {status: 'checked', type_ok: true, legibility: 'clear', holder_name: 'CRUZ, DANTE', name_match: 'mismatch', document_no: 'R01-1', issued_on: '2023-01-01', expires_on: '2025-01-01', expiry: 'expired', concerns: []};
+    await start(true);
+    await go('UploadDocument', {documentTypeId: 'dt1'});
+    await takeIt();
+    await settle();
+    expect(hasText('This license has expired')).toBe(true);
+    expect(hasText('does not match your record')).toBe(true);
+    expect(byTestId('upload-submit').props.title).toBe('Send to HR anyway');
+  });
+
+  it('when Claude cannot read it, the guard can still send it', async () => {
+    api.documentCheck = {status: 502, body: {code: 'claude_failed', message: 'Claude could not read it right now. Send it to HR as it is, or try again.'}};
+    await start(true);
+    await go('UploadDocument', {documentTypeId: 'dt1'});
+    await takeIt();
+    await settle();
+    expect(hasText('You can still send it.')).toBe(true);
+    expect(byTestId('upload-submit').props.disabled).toBeFalsy();
+  });
+});
+
 describe('notices from HR, on screen', () => {
   const notice = {
     id: 'case1', case_no: 'DC-2026-000001', status: 'nte_issued', rule: {ref: 'A-1', title: 'Sleeping on post'}, offense_no: 1,

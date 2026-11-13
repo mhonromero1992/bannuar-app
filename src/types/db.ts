@@ -214,6 +214,8 @@ export interface DocumentType {
   has_expiry: boolean;
   employee_can_upload: boolean;
   sort_order: number;
+  /** Claude reads it at upload (the LESP to start with; HR sets it in the portal). */
+  ai_check?: boolean;
 }
 
 export interface EmployeeDocument {

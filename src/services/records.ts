@@ -1,9 +1,10 @@
 import {supabase} from '../config/supabase';
 import type {DocumentType, EmployeeDocument, GovernmentIds} from '../types/db';
 import {exec, run} from './db';
-import {type PickedFile, uploadMyFile} from './files';
+import {type PickedFile, functionHeaders, uploadMyFile} from './files';
+import {SUPABASE_URL} from '../config/supabase';
 
-export const DOCUMENT_TYPE_COLUMNS = 'id,code,name,category,has_expiry,employee_can_upload,sort_order';
+export const DOCUMENT_TYPE_COLUMNS = 'id,code,name,category,has_expiry,employee_can_upload,sort_order,ai_check';
 export const DOCUMENT_COLUMNS =
   'id,document_type_id,document_no,issued_on,expires_on,file_path,status,review_note,created_at,' +
   'type:document_types(id,code,name,has_expiry,employee_can_upload)';
@@ -55,8 +56,10 @@ export async function uploadRenewal(input: {
   issuedOn: string | null;
   expiresOn: string | null;
   file: PickedFile;
+  /** Already in S3 (sent early so Claude could read it). */
+  uploadedKey?: string | null;
 }): Promise<void> {
-  const path = (await uploadMyFile('document', input.file, {documentTypeId: input.documentTypeId})).key;
+  const path = input.uploadedKey ?? (await uploadDocumentFile(input.documentTypeId, input.file));
   await exec(
     supabase.from('employee_documents').insert({
       employee_id: input.employeeId,
@@ -73,4 +76,40 @@ export async function uploadRenewal(input: {
 export function latestByType(docs: EmployeeDocument[]): EmployeeDocument[] {
   const seen = new Set<string>();
   return docs.filter(d => (seen.has(d.document_type_id) ? false : (seen.add(d.document_type_id), true)));
+}
+
+/** Sends the document to the guard's S3 folder for its type; the key goes on the row. */
+export async function uploadDocumentFile(documentTypeId: string, file: PickedFile): Promise<string> {
+  return (await uploadMyFile('document', file, {documentTypeId})).key;
+}
+
+/**
+ * What Claude read on the document, checked by the document-ai function: the number, the dates, the
+ * name against the guard's record and the expiry against today. HR still verifies the document.
+ */
+export interface DocumentCheck {
+  status: 'checked';
+  type_ok: boolean;
+  legibility: 'clear' | 'partly_readable' | 'unreadable';
+  holder_name: string;
+  name_match: 'match' | 'partial' | 'mismatch' | 'unknown';
+  document_no: string;
+  issued_on: string;
+  expires_on: string;
+  expiry: 'expired' | 'expiring' | 'valid' | 'unknown' | 'none';
+  concerns: string[];
+}
+export type CheckAnswer = DocumentCheck | {status: 'unsupported'; message: string};
+
+export async function checkDocument(key: string): Promise<CheckAnswer> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/document-ai`, {
+    method: 'POST',
+    headers: {...(await functionHeaders()), 'Content-Type': 'application/json'},
+    body: JSON.stringify({action: 'check', key}),
+  });
+  const body = (await res.json().catch(() => null)) as (CheckAnswer & {message?: string}) | null;
+  if (!res.ok || !body) {
+    throw new Error(body?.message || 'Claude could not read it right now. Send it to HR as it is.');
+  }
+  return body;
 }
