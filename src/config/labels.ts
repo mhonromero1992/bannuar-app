@@ -34,7 +34,10 @@ export const LOCATION_CHECK: ToneMap = {
   no_location: ['No location', 'warn'],
   post_not_set: ['Post location not set', 'neutral'],
   no_post: ['No post assigned', 'neutral'],
+  manual: ['Entered by hand', 'info'],
 };
+/** Who logged it: the guard's own phone, the post's commander (the guard had no phone), or HR by hand. */
+export const ATTENDANCE_SOURCE: ToneMap = {self: ['Own phone', 'neutral'], commander: ['By the commander', 'info'], manual: ['By hand', 'warn']};
 export const COE_STATUS: ToneMap = {pending: ['Pending', 'warn'], issued: ['Issued', 'ok'], rejected: ['Declined', 'bad'], cancelled: ['Cancelled', 'neutral']};
 export const COE_PURPOSE: Record<string, string> = {
   employment: 'New employment', bank_loan: 'Bank or loan', government: 'Government requirement',

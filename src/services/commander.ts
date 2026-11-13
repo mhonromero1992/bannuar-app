@@ -26,7 +26,7 @@ export async function loadPost(myEmployeeId: string): Promise<PostData> {
     return {sites: [], guards: [], pending: []};
   }
   const [sites, guards, pending] = await Promise.all([
-    run(supabase.from('sites').select('id,name,code,city').in('id', ids).order('name')),
+    run(supabase.from('sites').select('id,name,code,city,latitude,longitude,geofence_radius_m').in('id', ids).order('name')),
     run(
       supabase
         .from('employees')

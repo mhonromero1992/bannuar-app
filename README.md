@@ -18,7 +18,7 @@ Gaia, in the same layout as the atlas app. Design: [DESIGN.md](DESIGN.md).
 | Set a new password | Forced after HR gives a temporary password | `auth.updateUser`, `mark_password_changed` |
 | Forgot password | Told to ask HR for a temporary password (no email reset) | HR uses `admin_reset_password` in the portal |
 | Time in and out | From Home: the phone's location is checked against the post, then a photo of the guard taken now, then the log. The time is the server's. Away from the post or with no location, it is still logged and marked for HR | `log_attendance`, `attendance_logs`; the selfie to S3 (`employees/<number>/attendance/<year>/<month>/`) through the `files` function |
-| Attendance | Their time in and out of the last 31 days, by day, with each check | `attendance_logs` |
+| Attendance | Their time in and out of the last 31 days, by day, with each check, and who logged it when it was not their phone (their commander, or HR by hand with the reason) | `attendance_logs` |
 | Home | Today's attendance with the next button (time in or time out), post or "Floating since …", announcements to acknowledge, latest pay (hidden until tapped), open requests, documents to renew, leave to endorse (commanders) | `employees`, `announcements`, `payslips`, `leave_requests`, `coe_requests`, `profile_change_requests`, `payroll_concerns`, `document_alerts` |
 | Announcements | Read, acknowledge, pictures | `announcements`, `announcement_receipts`, `mark_announcement_read`, bucket `announcement-media` |
 | Payslips | Every published cutoff, every line, report a concern (no screenshots), download the payslip as a PDF (made on request by the `payslip-pdf` function, never stored) | `payslips` + `payroll_periods`, `payroll_concerns`, Edge Function `payslip-pdf` |
@@ -27,7 +27,7 @@ Gaia, in the same layout as the atlas app. Design: [DESIGN.md](DESIGN.md).
 | My records | The 201 file (read-only), government numbers (masked, no screenshots), documents with expiry, upload a renewal (to the document type's S3 folder: `201-file`, `work-requirements` or `lesp`) | `employees`, `get_government_ids`, `employee_documents`, `document_types` |
 | Change my details | Ask HR to change contact details | `profile_change_requests` |
 | Notifications | List, mark read, open the right screen; live while the app is open; push when set up | `notifications` (Realtime), `device_tokens` via `register_device_token` |
-| My post | Commanders: their guards, leave to endorse with a reliever | `my_supervised_site_ids`, `decide_leave_request` |
+| My post | Commanders: their guards, leave to endorse with a reliever. Tapping a guard shows their last three days of time in and out, and logs it for them when they have no phone: the commander's location and the guard's photo (back camera), to the guard's own S3 folder; the guard is told | `my_supervised_site_ids`, `decide_leave_request`, `log_attendance_for` |
 | Account | Change password, app lock, appearance (same as the phone, light or dark), privacy notice, version, sign out | |
 
 Every list screen has loading, empty, error and offline states. Offline, it shows what was loaded

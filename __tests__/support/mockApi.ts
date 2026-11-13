@@ -163,6 +163,17 @@ export function installMockApi(): MockApi {
         radius_m: args.p_latitude === null ? null : 150,
         site_name: 'Post A',
       }),
+      log_attendance_for: args => ({
+        id: 'at-9',
+        kind: args.p_kind,
+        logged_at: '2026-11-11T00:04:00Z',
+        location_check: args.p_latitude === null ? 'no_location' : 'at_post',
+        distance_m: args.p_latitude === null ? null : 30,
+        accuracy_m: args.p_accuracy_m === null ? null : Math.ceil(Number(args.p_accuracy_m)),
+        radius_m: args.p_latitude === null ? null : 150,
+        site_name: 'Post A',
+        employee_name: 'Carlo Diaz',
+      }),
     },
     password: 'right-password-1',
     activate: () => ({status: 'activated', login_email: 'g-002@employees.bannuar.invalid'}),
@@ -217,7 +228,8 @@ export function installMockApi(): MockApi {
         const folder =
           fields.purpose === 'document' ? DOC_FOLDERS[fields.document_type_id] ?? '201-file' : fields.purpose === 'attendance' ? 'attendance/2026/11' : fields.purpose;
         const name = fields.purpose === 'attendance' ? `2026-11-11_0802_${kind}_mock${n}.jpg` : `2026-11-11_${fields.purpose}_mock${n}.jpg`;
-        const key = `employees/G-002/${folder}/${name}`;
+        const owner = fields.employee_id ? ((api.tables.employees ?? []) as Array<Record<string, unknown>>).find(e => e.id === fields.employee_id)?.employee_no : 'G-002';
+        const key = `employees/${String(owner ?? 'G-002')}/${folder}/${name}`;
         return answer({id: `sf-${n}`, key, name, content_type: 'image/jpeg', size_bytes: 1000});
       }
       const b = body as {action?: string; keys?: string[]};

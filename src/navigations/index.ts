@@ -26,6 +26,7 @@ export {default as Attendance} from '../app/attendance/Attendance';
 export {default as LogAttendance} from '../app/attendance/LogAttendance';
 export {default as MyPost} from '../app/commander/MyPost';
 export {default as Endorse} from '../app/commander/Endorse';
+export {default as GuardAttendance} from '../app/commander/GuardAttendance';
 export {default as More} from '../app/more/More';
 export {default as Account} from '../app/more/Account';
 export {default as ChangePassword} from '../app/more/ChangePassword';

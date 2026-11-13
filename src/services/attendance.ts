@@ -23,8 +23,13 @@ export interface AttendanceLog {
   accuracy_m: number | null;
   radius_m: number | null;
   mock_location: boolean | null;
+  /** self: the guard's phone; commander: logged by the post's commander; manual: entered by HR. */
+  source: AttendanceSource;
+  manual_reason: string | null;
   site: {name: string} | null;
 }
+
+export type AttendanceSource = 'self' | 'commander' | 'manual';
 
 /** log_attendance's answer. */
 export interface AttendanceResult {
@@ -39,9 +44,9 @@ export interface AttendanceResult {
 }
 
 // no coordinates or photo paths: the phone keeps only what the list shows
-export const ATTENDANCE_COLUMNS = 'id,kind,logged_at,location_check,distance_m,accuracy_m,radius_m,mock_location,site:sites(name)';
+export const ATTENDANCE_COLUMNS = 'id,kind,logged_at,location_check,distance_m,accuracy_m,radius_m,mock_location,source,manual_reason,site:sites(name)';
 
-/** The guard's own logs of the last 31 days, newest first. */
+/** A guard's logs of the last 31 days, newest first: the guard's own, or a commander's guard's (row level security). */
 export async function loadAttendance(employeeId: string, now: Date = new Date()): Promise<AttendanceLog[]> {
   const since = new Date(now.getTime() - 31 * 86400000).toISOString();
   const rows = await run(
@@ -67,9 +72,9 @@ const SELFIE_TYPES: Record<string, string> = {'image/jpeg': 'jpg', 'image/png': 
  * The front camera, through the phone's camera app. Some camera apps open the back camera anyway;
  * the screen says to switch. Never from the gallery: the photo is taken at the log.
  */
-export async function takeSelfie(): Promise<PickedFile | null> {
+export async function takeSelfie(camera: 'front' | 'back' = 'front'): Promise<PickedFile | null> {
   const res = await withoutRelock(() =>
-    launchCamera({mediaType: 'photo', cameraType: 'front', quality: 0.6, maxWidth: 1080, maxHeight: 1080, saveToPhotos: false, includeBase64: false}),
+    launchCamera({mediaType: 'photo', cameraType: camera, quality: 0.6, maxWidth: 1080, maxHeight: 1080, saveToPhotos: false, includeBase64: false}),
   );
   const a = res.assets?.[0];
   if (res.didCancel || !a?.uri) {
@@ -85,21 +90,41 @@ export async function takeSelfie(): Promise<PickedFile | null> {
  * Sends the selfie to the guard's own S3 folder through the files Edge Function:
  * employees/<employee number>/attendance/<year>/<month>/<date>_<time>_<time-in|time-out>_<random>.jpg.
  * Returns the key for log_attendance, which accepts only the guard's own upload of the last 30 minutes.
+ * A commander passes the guard's id: the photo goes to the guard's folder, for log_attendance_for.
  */
-export async function uploadSelfie(kind: AttendanceKind, photo: PickedFile): Promise<string> {
+export async function uploadSelfie(kind: AttendanceKind, photo: PickedFile, guardId?: string): Promise<string> {
   if (!SELFIE_TYPES[photo.type]) {
     throw new Error('Take the photo with the camera, as a JPG.');
   }
   if (photo.size !== null && photo.size > MAX_SELFIE_BYTES) {
     throw new Error('The photo is too big to send. Take it again.');
   }
-  return (await uploadMyFile('attendance', photo, {kind})).key;
+  return (await uploadMyFile('attendance', photo, guardId ? {kind, employeeId: guardId} : {kind})).key;
 }
 
 /** Writes the log. A retry with the same photo path returns the first log (log_attendance). */
 export async function logAttendance(input: {kind: AttendanceKind; photoPath: string; fix: Fix | null}): Promise<AttendanceResult> {
   return run(
     supabase.rpc('log_attendance', {
+      p_kind: input.kind,
+      p_photo_path: input.photoPath,
+      p_latitude: input.fix?.latitude ?? null,
+      p_longitude: input.fix?.longitude ?? null,
+      p_accuracy_m: input.fix ? Math.round(input.fix.accuracy * 10) / 10 : null,
+      p_mock_location: input.fix?.mocked ?? null,
+    }),
+  ) as Promise<AttendanceResult>;
+}
+
+/**
+ * The commander logs for a guard of their post who has no phone with them: the guard's photo, taken
+ * by the commander now, and the commander's location. The database checks that the commander
+ * supervises the guard's post, stamps its own time, marks the log "by the commander" and tells the guard.
+ */
+export async function logAttendanceFor(input: {guardId: string; kind: AttendanceKind; photoPath: string; fix: Fix | null}): Promise<AttendanceResult> {
+  return run(
+    supabase.rpc('log_attendance_for', {
+      p_employee_id: input.guardId,
       p_kind: input.kind,
       p_photo_path: input.photoPath,
       p_latitude: input.fix?.latitude ?? null,

@@ -36,6 +36,8 @@ export function checkLine(check: LocationCheck, distance: number | null, accurac
       return "Your post's location is not set yet";
     case 'no_post':
       return 'You had no post on file';
+    case 'manual':
+      return 'Entered by HR';
     default:
       return '';
   }
@@ -44,4 +46,15 @@ export function checkLine(check: LocationCheck, distance: number | null, accurac
 /** Logs HR will look at more closely. */
 export function flagged(check: LocationCheck, mocked: boolean | null | undefined): boolean {
   return check === 'away' || check === 'unsure' || check === 'no_location' || mocked === true;
+}
+
+/** Who logged it, when not the guard's own phone: "Logged by your commander", "Entered by HR: <reason>". */
+export function sourceLine(source: string | null | undefined, reason?: string | null): string {
+  if (source === 'commander') {
+    return 'Logged by your commander';
+  }
+  if (source === 'manual') {
+    return reason ? `Entered by HR: ${reason}` : 'Entered by HR';
+  }
+  return '';
 }

@@ -349,6 +349,54 @@ describe('time in and out, on screen', () => {
     expect(hasText('Time in logged')).toBe(true);
   });
 
+  it('a commander logs for a guard with no phone: the guard\'s photo in the guard\'s folder, the commander\'s location', async () => {
+    allow(PermissionsAndroid.RESULTS.GRANTED);
+    api.rpc.my_access = () => access({roles: ['employee', 'supervisor']});
+    api.rpc.my_supervised_site_ids = () => ['s1'];
+    api.tables.sites = [{id: 's1', name: 'Post A', latitude: 14.5547, longitude: 121.0244, geofence_radius_m: 150}];
+    api.tables.employees.push({id: 'e3', employee_no: 'G-003', first_name: 'Carlo', last_name: 'Diaz', position: 'Security Guard', status: 'active', site_id: 's1'});
+    await start(true);
+    await go('MyPost');
+    await press(byTestId('guard-e3'));
+    expect(navigationRef.getCurrentRoute()?.name).toBe('GuardAttendance');
+    expect(api.rest('GET', 'attendance_logs').at(-1)?.query.get('employee_id')).toBe('eq.e3');
+    await press(byTestId('guard-in'));
+    expect(navigationRef.getCurrentRoute()?.params).toEqual({kind: 'time_in', guardId: 'e3'});
+    expect(hasText('For Carlo Diaz (G-003)', form())).toBe(true);
+    expect(hasText('At the post', form())).toBe(true);
+
+    await press(byTestId('attendance-photo', form()));
+    expect((launchCamera as jest.Mock).mock.calls.at(-1)[0]).toMatchObject({cameraType: 'back', saveToPhotos: false});
+    await press(byTestId('attendance-send', form()));
+    const upload = api.requests.find(r => r.path === '/functions/v1/files');
+    expect(formFields(upload?.body)).toEqual({purpose: 'attendance', kind: 'time_in', employee_id: 'e3', file: '[file]'});
+    expect(api.rpcCalls('log_attendance')).toHaveLength(0);
+    expect(api.rpcCalls('log_attendance_for')[0].body).toEqual({
+      p_employee_id: 'e3',
+      p_kind: 'time_in',
+      p_photo_path: expect.stringMatching(/^employees\/G-003\/attendance\/2026\/11\/2026-11-11_0802_time-in_mock\d+\.jpg$/),
+      p_latitude: 14.5552,
+      p_longitude: 121.0244,
+      p_accuracy_m: 12,
+      p_mock_location: false,
+    });
+    expect(hasText('Time in logged')).toBe(true);
+    expect(hasText('For Carlo Diaz')).toBe(true);
+  });
+
+  it('the guard\'s list says when the commander or HR logged it', async () => {
+    const hourAgo = new Date(Date.now() - 3600000).toISOString();
+    api.tables.attendance_logs = [
+      {id: 'at1', employee_id: EMPLOYEE_ID, kind: 'time_in', logged_at: hourAgo, location_check: 'at_post', distance_m: 30, accuracy_m: 10, radius_m: 150, mock_location: false, source: 'commander', manual_reason: null, site: {name: 'Post A'}},
+      {id: 'at0', employee_id: EMPLOYEE_ID, kind: 'time_out', logged_at: '2026-11-01T10:00:00Z', location_check: 'manual', distance_m: null, accuracy_m: null, radius_m: null, mock_location: null, source: 'manual', manual_reason: 'Phone lost; from the post logbook', site: null},
+    ];
+    await start(true);
+    await go('Attendance');
+    expect(hasText('About 30 m from Post A. Logged by your commander')).toBe(true);
+    expect(hasText('Entered by HR: Phone lost; from the post logbook')).toBe(true);
+    expect(hasText('Entered by hand')).toBe(true);
+  });
+
   it('after a time in, Home offers time out; the list shows the day with each check', async () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 3600000).toISOString();
     api.tables.attendance_logs = [

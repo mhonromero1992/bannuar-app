@@ -13,3 +13,6 @@ export const KEYS = {
   post: 'post',
   attendance: 'attendance',
 } as const;
+
+/** A commander's view of one guard's time in and out (not kept on the phone). */
+export const guardAttendanceKey = (guardId: string) => `guard-attendance:${guardId}`;

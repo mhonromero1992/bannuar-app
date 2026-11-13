@@ -9,7 +9,7 @@ import {KEYS} from '../../store/keys';
 import {useResource} from '../../store/resources';
 import {useEmployeeId} from '../../store/session';
 import {useRefreshOnFocus} from '../../store/useRefreshOnFocus';
-import {checkLine, dayTitle} from './words';
+import {checkLine, dayTitle, sourceLine} from './words';
 
 /** The guard's time in and time out of the last 31 days, by day, with how each was checked. */
 export default function Attendance() {
@@ -36,7 +36,7 @@ export default function Attendance() {
                 <Row
                   key={r.id}
                   title={`${ATTENDANCE_KIND[r.kind]} · ${fmtTime(r.logged_at)}`}
-                  detail={[checkLine(r.location_check, r.distance_m, r.accuracy_m, r.site?.name), r.mock_location ? 'A mock location app was on' : ''].filter(Boolean).join('. ')}
+                  detail={[r.source === 'manual' ? '' : checkLine(r.location_check, r.distance_m, r.accuracy_m, r.site?.name), sourceLine(r.source, r.manual_reason), r.mock_location ? 'A mock location app was on' : ''].filter(Boolean).join('. ')}
                   right={<Badge tone={tone(LOCATION_CHECK, r.location_check)}>{label(LOCATION_CHECK, r.location_check)}</Badge>}
                   last={i === rows.length - 1}
                 />

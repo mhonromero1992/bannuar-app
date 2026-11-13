@@ -109,14 +109,15 @@ async function failure(res: Response, fallback: string): Promise<Error> {
 }
 
 /**
- * Sends a file to the employee's own S3 folder through the files Edge Function. The database picks
+ * Sends a file to the employee's own S3 folder through the files Edge Function (or, for a commander
+ * logging a guard who has no phone, to that guard's attendance folder). The database picks
  * the folder (the document type's: 201-file, work-requirements or lesp; or leave, or
  * attendance/<year>/<month>) and the name. Returns what was stored, with the key to save on the row.
  */
 export async function uploadMyFile(
   purpose: UploadPurpose,
   file: PickedFile,
-  extra: {documentTypeId?: string; kind?: 'time_in' | 'time_out'} = {},
+  extra: {documentTypeId?: string; kind?: 'time_in' | 'time_out'; employeeId?: string} = {},
 ): Promise<StoredFile> {
   const problem = fileProblem(file);
   if (problem) {
@@ -129,6 +130,10 @@ export async function uploadMyFile(
   }
   if (extra.kind) {
     form.append('kind', extra.kind);
+  }
+  if (extra.employeeId) {
+    // only for a commander's photo of a guard of their post at time in or out (begin_file_upload)
+    form.append('employee_id', extra.employeeId);
   }
   // React Native reads the file itself from its uri (content:// or file://) while sending
   form.append('file', {uri: file.uri, name: file.name, type: file.type} as unknown as Blob);

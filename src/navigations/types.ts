@@ -36,8 +36,9 @@ export type RootStackParamList = {
   UploadDocument: {documentTypeId?: string} | undefined;
   ChangeDetails: undefined;
   Attendance: undefined;
-  LogAttendance: {kind: 'time_in' | 'time_out'};
+  LogAttendance: {kind: 'time_in' | 'time_out'; guardId?: string};
   MyPost: undefined;
+  GuardAttendance: {guardId: string};
   Endorse: {id: string};
   Account: undefined;
   ChangePassword: undefined;

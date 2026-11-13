@@ -5,13 +5,14 @@ import {useTheme} from 'styled-components/native';
 import {Badge, Button, Card, Icon, Notice, Screen, SectionLabel, Txt} from '../../components/ui';
 import {label, LOCATION_CHECK, tone} from '../../config/labels';
 import {errorText, isNetworkError} from '../../lib/errors';
-import {fmtDistance, fmtLongDate, fmtTime} from '../../lib/format';
+import {fmtDistance, fmtLongDate, fmtTime, fullName} from '../../lib/format';
 import type {RootStackParamList} from '../../navigations/types';
-import {type AttendanceResult, discardPhoto, logAttendance, photoMustBeRetaken, takeSelfie, uploadSelfie} from '../../services/attendance';
+import {type AttendanceResult, discardPhoto, logAttendance, logAttendanceFor, photoMustBeRetaken, takeSelfie, uploadSelfie} from '../../services/attendance';
+import {loadPost} from '../../services/commander';
 import type {PickedFile} from '../../services/files';
 import {askLocation, checkLocation, type Fix, getFix, LocationError, LOCATION_MESSAGES, type LocationProblem, openAppSettings, type Permission} from '../../services/location';
 import {loadMe} from '../../services/profile';
-import {KEYS} from '../../store/keys';
+import {guardAttendanceKey, KEYS} from '../../store/keys';
 import {invalidate, useResource} from '../../store/resources';
 import {useEmployeeId} from '../../store/session';
 import {checkLine, flagged} from './words';
@@ -22,12 +23,18 @@ type Locating = {state: 'asking'} | {state: 'finding'} | {state: 'found'; fix: F
  * Time in or time out: the phone's location (checked against the post as the database will), a
  * photo of the guard taken now, then the log. Nothing is refused for being away from the post; the
  * guard sees what HR will see before sending.
+ *
+ * With a guardId, a commander logs for a guard of their post who has no phone with them: the
+ * commander's location, the guard's photo (the back camera), log_attendance_for.
  */
 export default function LogAttendance() {
-  const {kind} = useRoute<RouteProp<RootStackParamList, 'LogAttendance'>>().params;
+  const {kind, guardId} = useRoute<RouteProp<RootStackParamList, 'LogAttendance'>>().params;
   const nav = useNavigation();
   const employeeId = useEmployeeId();
-  const me = useResource(KEYS.me, () => loadMe(employeeId));
+  const me = useResource(guardId ? null : KEYS.me, () => loadMe(employeeId));
+  const post = useResource(guardId ? KEYS.post : null, () => loadPost(employeeId));
+  const guard = guardId ? post.data?.guards.find(g => g.id === guardId) : undefined;
+  const guardName = guard ? fullName(guard) : 'the guard';
   const words = kind === 'time_in' ? 'time in' : 'time out';
   const [loc, setLoc] = useState<Locating>({state: 'asking'});
   const [photo, setPhoto] = useState<PickedFile | null>(null);
@@ -76,7 +83,7 @@ export default function LogAttendance() {
   const take = async () => {
     setError(null);
     try {
-      const p = await takeSelfie();
+      const p = await takeSelfie(guardId ? 'back' : 'front');
       if (p) {
         await discardPhoto(photo);
         setPhoto(p);
@@ -89,7 +96,7 @@ export default function LogAttendance() {
 
   const send = async () => {
     if (!photo) {
-      setError('Take your photo first.');
+      setError(guardId ? "Take the guard's photo first." : 'Take your photo first.');
       return;
     }
     setBusy(true);
@@ -97,12 +104,13 @@ export default function LogAttendance() {
     let path = uploadedPath;
     try {
       if (!path) {
-        path = await uploadSelfie(kind, photo);
+        path = await uploadSelfie(kind, photo, guardId);
         setUploadedPath(path);
       }
-      const result = await logAttendance({kind, photoPath: path, fix: loc.state === 'found' ? loc.fix : null});
+      const fix = loc.state === 'found' ? loc.fix : null;
+      const result = guardId ? await logAttendanceFor({guardId, kind, photoPath: path, fix}) : await logAttendance({kind, photoPath: path, fix});
       await discardPhoto(photo);
-      invalidate(KEYS.attendance);
+      invalidate(guardId ? guardAttendanceKey(guardId) : KEYS.attendance);
       setDone(result);
     } catch (e) {
       const message = errorText(e);
@@ -110,9 +118,9 @@ export default function LogAttendance() {
         await discardPhoto(photo);
         setPhoto(null);
         setUploadedPath(null);
-        setError('Your photo did not reach the server. Take it again, then send.');
+        setError(guardId ? "The guard's photo did not reach the server. Take it again, then send." : 'Your photo did not reach the server. Take it again, then send.');
       } else {
-        setError(isNetworkError(e) ? `No connection, so your ${words} is not logged yet. Try again when you have signal.` : message);
+        setError(isNetworkError(e) ? `No connection, so ${guardId ? 'the' : 'your'} ${words} is not logged yet. Try again when you have signal.` : message);
       }
     } finally {
       setBusy(false);
@@ -122,12 +130,13 @@ export default function LogAttendance() {
   if (done) {
     return (
       <Screen title={kind === 'time_in' ? 'Time in' : 'Time out'} footer={<Button title="Done" onPress={() => nav.goBack()} testID="attendance-done" />}>
-        <Done result={done} />
+        <Done result={done} guardName={guardId ? guardName : null} />
       </Screen>
     );
   }
 
-  const site = me.data?.site ?? null;
+  const site = guardId ? post.data?.sites.find(s => s.id === guard?.site_id) ?? null : me.data?.site ?? null;
+  const known = guardId ? guard !== undefined : me.data !== undefined;
   const settled = loc.state === 'found' || loc.state === 'failed';
   return (
     <Screen
@@ -143,18 +152,23 @@ export default function LogAttendance() {
           <Button title={kind === 'time_in' ? 'Log time in' : 'Log time out'} onPress={send} busy={busy} disabled={!photo || !settled} testID="attendance-send" />
         </>
       }>
+      {guardId ? (
+        <Notice tone="info" title={`For ${guardName}${guard ? ` (${guard.employee_no})` : ''}`}>
+          Only when the guard has no phone with them. The log is marked as logged by you, and the guard is told in their app.
+        </Notice>
+      ) : null}
       <Card>
         <SectionLabel>1. Your location</SectionLabel>
-        <Where loc={loc} site={site} hasMe={me.data !== undefined} onRetry={locate} />
+        <Where loc={loc} site={site} hasMe={known} onRetry={locate} />
       </Card>
       <Card>
-        <SectionLabel>2. Your photo</SectionLabel>
+        <SectionLabel>{guardId ? "2. The guard's photo" : '2. Your photo'}</SectionLabel>
         {photo ? (
           <Image source={{uri: photo.uri}} style={styles.photo} accessibilityLabel="The photo you took" />
         ) : (
-          <Txt>Take a photo of yourself at your post. If the back camera opens, switch to the front camera.</Txt>
+          <Txt>{guardId ? `Take a photo of ${guardName} at the post, now.` : 'Take a photo of yourself at your post. If the back camera opens, switch to the front camera.'}</Txt>
         )}
-        <Button title={photo ? 'Take it again' : 'Take my photo'} icon="camera" variant={photo ? 'secondary' : 'primary'} onPress={take} testID="attendance-photo" />
+        <Button title={photo ? 'Take it again' : guardId ? "Take the guard's photo" : 'Take my photo'} icon="camera" variant={photo ? 'secondary' : 'primary'} onPress={take} testID="attendance-photo" />
       </Card>
       {error ? (
         <Notice tone="bad" title="Not logged yet">
@@ -162,7 +176,9 @@ export default function LogAttendance() {
         </Notice>
       ) : null}
       <Txt variant="small" color="muted">
-        Your photo, the time and your location go to Bannuar HR with this log. The app reads your location only while you log, never in the background.
+        {guardId
+          ? "The guard's photo, the time and your location go to Bannuar HR with this log. The app reads your location only while you log, never in the background."
+          : 'Your photo, the time and your location go to Bannuar HR with this log. The app reads your location only while you log, never in the background.'}
       </Txt>
     </Screen>
   );
@@ -225,7 +241,7 @@ function previewLine(check: string, distance: number | null, accuracy: number, p
   }
 }
 
-function Done({result}: {result: AttendanceResult}) {
+function Done({result, guardName}: {result: AttendanceResult; guardName: string | null}) {
   const {colors} = useTheme();
   const look = flagged(result.location_check, false);
   return (
@@ -237,6 +253,7 @@ function Done({result}: {result: AttendanceResult}) {
             {result.kind === 'time_in' ? 'Time in logged' : 'Time out logged'}
           </Txt>
         </View>
+        {guardName ? <Txt>{`For ${guardName}`}</Txt> : null}
         <Txt variant="figure">{fmtTime(result.logged_at)}</Txt>
         <Txt color="muted">{fmtLongDate(result.logged_at)}</Txt>
         {result.site_name ? <Txt color="muted">{result.site_name}</Txt> : null}
@@ -245,7 +262,7 @@ function Done({result}: {result: AttendanceResult}) {
       </Card>
       {look ? (
         <Notice tone="warn" title="HR will look at this log">
-          If you were at your post, tell your detachment commander. Your photo shows where you were.
+          {guardName ? 'If you were at the post, tell HR. The photo shows where the guard was.' : 'If you were at your post, tell your detachment commander. Your photo shows where you were.'}
         </Notice>
       ) : null}
     </>

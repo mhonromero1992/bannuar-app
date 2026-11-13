@@ -44,6 +44,9 @@ export default function MyPost() {
             </View>
             <View style={styles.section}>
               <SectionLabel>{`Guards (${data.guards.length})`}</SectionLabel>
+              <Txt variant="small" color="muted">
+                Tap a guard to see their time in and out, or to log it for them when they have no phone with them.
+              </Txt>
               <Card>
                 {data.guards.map((g, i) => (
                   <Row
@@ -51,6 +54,8 @@ export default function MyPost() {
                     title={fullName(g)}
                     detail={`${g.employee_no} · ${g.position}${data.sites.length > 1 ? ` · ${data.sites.find(s => s.id === g.site_id)?.name ?? ''}` : ''}`}
                     right={g.status !== 'active' ? <Badge tone={tone(EMPLOYEE_STATUS, g.status)}>{label(EMPLOYEE_STATUS, g.status)}</Badge> : null}
+                    onPress={g.id === employeeId ? undefined : () => nav.navigate('GuardAttendance', {guardId: g.id})}
+                    testID={`guard-${g.id}`}
                     last={i === data.guards.length - 1}
                   />
                 ))}

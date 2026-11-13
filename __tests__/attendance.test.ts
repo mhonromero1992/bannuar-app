@@ -1,7 +1,7 @@
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {launchCamera} from 'react-native-image-picker';
 import {PermissionsAndroid} from 'react-native';
-import {checkLine, dayTitle, flagged, whenText} from '../src/app/attendance/words';
+import {checkLine, dayTitle, flagged, sourceLine, whenText} from '../src/app/attendance/words';
 import {fmtDistance, fmtTime, manilaDay} from '../src/lib/format';
 import {discardPhoto, loadAttendance, logAttendance, nextKind, photoMustBeRetaken, takeSelfie, uploadSelfie, type AttendanceLog} from '../src/services/attendance';
 import {askLocation, checkLocation, distanceM, getFix, LocationError, permissionFrom, toFix} from '../src/services/location';
@@ -149,7 +149,7 @@ describe('the selfie and the log', () => {
 });
 
 describe('what to log next, and the words', () => {
-  const log = (kind: 'time_in' | 'time_out', loggedAt: string): AttendanceLog => ({id: loggedAt, kind, logged_at: loggedAt, location_check: 'at_post', distance_m: 40, accuracy_m: 10, radius_m: 150, mock_location: false, site: {name: 'Post A'}});
+  const log = (kind: 'time_in' | 'time_out', loggedAt: string): AttendanceLog => ({id: loggedAt, kind, logged_at: loggedAt, location_check: 'at_post', distance_m: 40, accuracy_m: 10, radius_m: 150, mock_location: false, source: 'self', manual_reason: null, site: {name: 'Post A'}});
   const now = Date.parse('2026-11-11T04:00:00Z'); // 12:00 noon in Manila
   it('time out after a time in of the last 18 hours, otherwise time in', () => {
     expect(nextKind([], now)).toBe('time_in');
@@ -178,5 +178,11 @@ describe('what to log next, and the words', () => {
     expect(flagged('at_post', true)).toBe(true);
     expect(flagged('away', false)).toBe(true);
     expect(flagged('post_not_set', false)).toBe(false);
+  });
+  it('says who logged it when it was not the guard\'s own phone', () => {
+    expect(sourceLine('self')).toBe('');
+    expect(sourceLine('commander')).toBe('Logged by your commander');
+    expect(sourceLine('manual', 'Phone lost; from the post logbook')).toBe('Entered by HR: Phone lost; from the post logbook');
+    expect(checkLine('manual', null, null)).toBe('Entered by HR');
   });
 });

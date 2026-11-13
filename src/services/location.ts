@@ -138,7 +138,7 @@ export interface PostPlace {
   geofence_radius_m?: number | null;
 }
 
-export type LocationCheck = 'at_post' | 'unsure' | 'away' | 'no_location' | 'post_not_set' | 'no_post';
+export type LocationCheck = 'at_post' | 'unsure' | 'away' | 'no_location' | 'post_not_set' | 'no_post' | 'manual';
 
 /** Metres between two points (haversine, the earth's mean radius), like public.geo_distance_m. */
 export function distanceM(a: {latitude: number; longitude: number}, b: {latitude: number; longitude: number}): number {

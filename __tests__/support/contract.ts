@@ -223,8 +223,10 @@ export function checkRequests(requests: Recorded[], schema: Snapshot, employeeId
           if (!['document', 'leave', 'attendance'].includes(fields.purpose)) {
             problems.add(`${where}: the app uploads only documents, leave attachments and selfies, not "${fields.purpose}"`);
           }
-          if (fields.employee_id && fields.employee_id !== employeeId) {
-            problems.add(`${where}: an upload goes only to the employee's own folder`);
+          // the one exception: a commander's photo of a guard of their post at time in or out
+          // (begin_file_upload checks supervises() for it)
+          if (fields.employee_id && fields.employee_id !== employeeId && fields.purpose !== 'attendance') {
+            problems.add(`${where}: an upload goes only to the employee's own folder, or a guard's selfie folder for their commander`);
           }
           if (fields.purpose === 'attendance' && !['time_in', 'time_out'].includes(fields.kind)) {
             problems.add(`${where}: a selfie says time_in or time_out`);
