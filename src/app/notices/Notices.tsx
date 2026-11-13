@@ -54,8 +54,9 @@ export default function Notices() {
                   key={n.id}
                   title={n.rule ? `${n.rule.ref} ${n.rule.title}`.trim() : n.case_no}
                   detail={action ? ACTION_TEXT[action] : `${n.case_no} · ${fmtDate(n.nte_issued_at)}`}
+                  // a row that says what to do needs no badge (a long one squeezes the title on a phone)
                   right={
-                    n.decision ? (
+                    action ? null : n.decision ? (
                       <Badge tone={tone(CASE_DECISION, n.decision)}>{label(CASE_DECISION, n.decision)}</Badge>
                     ) : (
                       <Badge tone={tone(CASE_STATUS, n.status)}>{label(CASE_STATUS, n.status)}</Badge>
